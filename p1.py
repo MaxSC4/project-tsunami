@@ -1,9 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Éditeur de Spyder
-
-Ceci est un script temporaire.
-"""
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,6 +22,7 @@ nrows=2160
 
 
 #estimation de l'extent la liste [x min, x max, ymin, y max]
+#blabla
 
 
 xllcenter=0.000000
