@@ -1,0 +1,40 @@
+import numpy as np
+
+R_EARTH = 6371000.0 # en mètres
+
+def deg2rad(x): return np.deg2rad(x)
+def rad2deg(x): return np.rad2deg(x)
+
+def great_circle_points(lat1, lon1, lat2, lon2, npts=400):
+    """npts points (lat, lon) uniformes en angle entre A et B (en degrés)."""
+    phi1, lambda1, phi2, lambda2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
+
+    # vecteurs 3D
+    def sph2cart(lat, lon):
+        return np.array([np.cos(lat)*np.cos(lon), np.cos(lat)*np.sin(lon), np.sin(lat)])
+
+    A, B = sph2cart(lat1, lon1), sph2cart(lat2, lon2)
+
+    # angle
+    w = np.arccos(np.dot(A, B))
+    if w == 0:
+        return np.array([[lat1, lon1]])
+
+    ts = np.linspace(0, 1, npts)
+    pts = []
+    for t in ts:
+        num = np.sin((1-t)*w)*A + np.sin(t*w)*B
+        p = num / np.sin(w)
+        lat_phi = np.arcsin(p[2])
+        lon_lambda = np.arctan2(p[1], p[0])
+        pts.append([np.rad2deg(lat_phi), np.rad2deg(lon_lambda)])
+    return np.array(pts)
+
+
+def arc_length_m(lat1, lon1, lat2, lon2):
+    phi1, lambda1, phi2, lambda2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
+    w = np.arccos(np.sin(phi1)*np.sin(phi2)+np.cos(phi1)*np.cos(phi2)*np.cos(lambda2-lambda1), -1, 1)
+    return R_EARTH * w
+
+
+
