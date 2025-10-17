@@ -21,9 +21,6 @@ nrows=2160
 
 
 
-#estimation de l'extent la liste [x min, x max, ymin, y max]
-#blabla
-
 
 xllcenter=0.000000
 
@@ -68,40 +65,80 @@ plt.xlabel("Longitude")
 plt.ylabel("Latitude")
 plt.title("Carte avec les positions des villes")
 
-#%% Distance entre deux pointd 1 et 2 en lat/lon
-def Dist (lat1,lon1, lat2, lon2):
-    lat1=np.radians(lat1)
-    lon1=np.radians(lon1)
-    lat2=np.radians(lat2)
-    lon2=np.radians(lon2)
-    
-    
-    
-    R=6370000
-    d_lon=lon2-lon1
-    D=R*np.arccos(np.cos(lat1)*np.cos(lat2)*np.cos(d_lon)+np.sin(lat1)*np.sin(lat2))
-    return D
-    
-Dist(48,2,40,76)
+
 
 #%%
+#CONVERSION DE DEGRe au RADIAN 
+def conversion_deg2rad(lat1, lon1, lat2, lon2):
+    lat1_rad = np.radians(lat1)
+    lon1_rad = np.radians(lon1)
+    lat2_rad = np.radians(lat2)
+    lon2_rad = np.radians(lon2)
+
+    return lat1_rad, lon1_rad, lat2_rad, lon2_rad
+#DONNE LA DISTANCE ENTRE DEUX POINTS DE LATLON EN RADIAN
+
+def Dist (lat1_rad, lon1_rad, lat2_rad, lon2_rad):
+      
+    R=6370000
+    d_lon=lon2_rad-lon1_rad
+    D=R*np.arccos(np.cos(lat1_rad)*np.cos(lat2_rad)*np.cos(d_lon)+np.sin(lat1_rad)*np.sin(lat2_rad))
+    return D
+    
+
+
+#CONVERSION LATLON A XYZ
+def sph2cart(lat_deg, lon_deg, R=1.0):
+    lat = np.radians(lat_deg)
+    lon = np.radians(lon_deg)
+    x = R * np.cos(lat) * np.cos(lon)
+    y = R * np.cos(lat) * np.sin(lon)
+    z = R * np.sin(lat)
+    return np.array([x, y, z])
+
+
+#CONVERSION XYZ a latlon
+def cart2sph(x, y, z):
+    lat = np.degrees(np.arcsin(z / np.sqrt(x**2 + y**2 + z**2)))
+    lon = np.degrees(np.arctan2(y, x))
+    return lat, lon
 
 
 
 
+"""Pour avoir l'equation du grand cercle, je vais resoudre l'equation du plan AB et de la terre
+Le plan est defini par Avect et Bvect
+sphere de centre O
+x^^2+y**2+z**2=R**2
 
 
 
+"""
+#%% 
+"""
+A et B les coordonnées xyz en latlon
+
+A = np.array([1, 2, 3])
+B = np.array([2, -1, 1])
+"""
+n = np.cross(A, B)
+print("Vecteur normal :", n)
+print(f"Équation du plan : {n[0]:.2f}·x + {n[1]:.2f}·y + {n[2]:.2f}·z = 0")
+
+
+r = 5   # rayon de la sphère
+print(f"Équation de la sphère : x² + y² + z² = {r**2}")
+
+
+u_hat = A / np.linalg.norm(A)
+v_perp = B - np.dot(B, u_hat) * u_hat
+v_hat = v_perp / np.linalg.norm(v_perp)
 
 
 
-
-
-
-
-
-
-
+# --- Paramétrisation du cercle ---
+t = np.linspace(0, 2*np.pi, 400)
+circle = np.array([r * (np.cos(tt)*u_hat + np.sin(tt)*v_hat) for tt in t])
 
 
 
