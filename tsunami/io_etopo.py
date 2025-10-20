@@ -1,5 +1,8 @@
 import numpy as np
 
+
+
+
 def load_etopo5(path):
     """Lit une grille (ETOP05) et renvoie (lats, lons, H, nodata)."""
 

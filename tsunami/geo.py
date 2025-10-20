@@ -1,4 +1,5 @@
 import numpy as np
+from speed_model import speed
 
 R_EARTH = 6371000.0 # en mètres
 
@@ -10,10 +11,10 @@ def great_circle_points(lat1, lon1, lat2, lon2, npts=400):
     phi1, lambda1, phi2, lambda2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
 
     # vecteurs 3D
-    def sph2cart(lat, lon):
-        return np.array([np.cos(lat)*np.cos(lon), np.cos(lat)*np.sin(lon), np.sin(lat)])
+    def sph2cart(phi, lambda_):
+        return np.array([np.cos(phi)*np.cos(lambda_), np.cos(phi)*np.sin(lambda_), np.sin(phi)]) 
 
-    A, B = sph2cart(lat1, lon1), sph2cart(lat2, lon2)
+    A, B = sph2cart(phi1, lambda1), sph2cart(phi2, lambda2)
 
     # angle
     w = np.arccos(np.dot(A, B))
@@ -28,7 +29,7 @@ def great_circle_points(lat1, lon1, lat2, lon2, npts=400):
         lat_phi = np.arcsin(p[2])
         lon_lambda = np.arctan2(p[1], p[0])
         pts.append([np.rad2deg(lat_phi), np.rad2deg(lon_lambda)])
-    return np.array(pts)
+    return {"points": np.array(pts), "angle": w,"npts":npts}
 
 
 def arc_length_m(lat1, lon1, lat2, lon2):
@@ -37,4 +38,47 @@ def arc_length_m(lat1, lon1, lat2, lon2):
     return R_EARTH * w
 
 
+"""on integre T= int(ds/vteta)
+ici ds= R dteta
+T= R* int( dteta/v(teta))
+T=R*somme (delta teta/v(teta))
+v teta n'a pas de sens, 
+on veut v(lat,lon) v on associe v aux valeurs de point 
+v( point 
+  )
 
+J'associe a chaque point du tableau de trajectoire la valeur v
+"""
+
+
+def TEMPS(H):
+    pts = great_circle_points(32, 50, 23, 20, npts=400)
+    deltateta=pts["angle"]/(pts["npts"]-1)
+    
+    V=speed(H)
+    #lats, lons = pts[:, 0], pts[:, 1]
+    
+    T=R_EARTH*deltateta*np.sum(1/(V[lats,lons]))
+    return T
+    
+    
+    
+    
+#s=arc_length_m(lat1, lon1, lat2, lon2)
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
