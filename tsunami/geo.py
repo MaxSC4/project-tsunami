@@ -29,7 +29,7 @@ def great_circle_points(lat1, lon1, lat2, lon2, npts=400):
         lat_phi = np.arcsin(p[2])
         lon_lambda = np.arctan2(p[1], p[0])
         pts.append([np.rad2deg(lat_phi), np.rad2deg(lon_lambda)])
-    return {"points": np.array(pts), "angle": w,"npts":npts}
+    return pts
 
 
 def arc_length_m(lat1, lon1, lat2, lon2):
