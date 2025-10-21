@@ -61,7 +61,7 @@ def make_depth_map(lats, lons, H):
 
         vals = map_coordinates(H, coords, order=1, mode="nearest")
 
-        return vals.astype(float), H
+        return vals.astype(float)
 
     return depth
 
