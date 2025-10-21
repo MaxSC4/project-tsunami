@@ -1,7 +1,5 @@
 import numpy as np
-
-
-
+from scipy.ndimage import map_coordinates
 
 def load_etopo5(path):
     """Lit une grille (ETOP05) et renvoie (lats, lons, H, nodata)."""
@@ -39,29 +37,41 @@ def load_etopo5(path):
     H = data.reshape(nrows, ncols)
     return lats, lons, H, nodata
 
+
+def make_depth_map(lats, lons, H):
+    nrows, ncols = H.shape
+    dlat = float(lats[1] - lats[0])
+    dlon = float(lons[1] - lons[0])
+    lat0 = float(lats[0])
+    lon0 = float(lons[0])
+    lon_span = dlon * ncols
+
+    def _lon_wrap_arr(lon_arr):
+        return lon0 + ((lon_arr - lon0) % lon_span)
+
+    def depth(lats_in, lons_in):
+        lats_in = np.asarray(lats_in, dtype=float)
+        lons_in = np.asarray(lons_in, dtype=float)
+
+        lw = _lon_wrap_arr(lons_in)
+        i = (lats_in - lat0) / dlat
+        j = (lw - lon0) / dlon
+
+        coords = np.vstack([i, j])
+
+        vals = map_coordinates(H, coords, order=1, mode="nearest")
+
+        return vals.astype(float), H
+
+    return depth
+
+
+# TEST
 """
-ON REGARDE PAS CA POUR L'INSTANT
-def depth(lat, lon, lats, lons, H, nodata=-99999.0):
-    # Interpolation pour obtenir la profondeur à une position précise (lat, lon) entre les points de la grille. Renvoie np.nan si on touche du NODATA.
-    # ramène la longitude dans l’intervalle [0, 360) (ex: -150° = 210°)
-    lon = (lon + 360.0) % 360.0
+lats, lons, H, _ = load_etopo5("data/etopo5.grd")
+depth = make_depth_map(lats, lons, H)
 
-    # indices bas-gauche
-    i = np.searchsorted(lats, lat) - 1
-    j = np.searchsorted(lons, lon) - 1
-    i = np.clip(i, 0, len(lats)-2)
-    j = np.clip(j, 0, len(lons)-2)
-
-    y0, y1 = lats[i], lats[i+1]
-    x0, x1 = lons[j], lons[j+1]
-    dy = (lat - y0) / (y1 - y0 + 1e-12)
-    dx = (lon - x0) / (x1 - x0 + 1e-12)
-
-    patch = H[i:i+2, j:j+2]
-    if np.any(patch == nodata):
-        return np.nan
-
-    return ((1-dx)*(1-dy)*patch[0,0] + dx*(1-dy)*patch[0,1] + (1-dx)*dy*patch[1,0] + dx*dy*patch[1,1])
+lat0, lon0 = 10.0, 142.5
+val = depth(np.array([lat0]), np.array([lon0]))[0]
+print("Point unique:", val)
 """
-
-

@@ -2,7 +2,7 @@ import numpy as np
 from geo import great_circle_points, arc_length_m
 from speed_model import speed
 
-def travel_time_seconds(lat1, lon1, lat2, lon2, depth, n_samples=401):
+def travel_time_seconds(lat1, lon1, lat2, lon2, depth, n_samples=3500):
     # distance totale en m
     dist = arc_length_m(lat1, lon1, lat2, lon2)
     if dist == 0: # si la distance est nulle, le temps aussi
@@ -10,7 +10,7 @@ def travel_time_seconds(lat1, lon1, lat2, lon2, depth, n_samples=401):
 
     # génère npts points régulièrement espacés le long du grand cercle
     # les points représentent le chemin parcouru par l’onde entre les deux lieux.
-    pts = great_circle_points(lat1, lon1, lat2, lon2, npts = 400)
+    pts = great_circle_points(lat1, lon1, lat2, lon2, npts = n_samples)
     lats, lons = pts[:, 0], pts[:, 1]
 
     # regarde la grille de bathy (ETOPO5) via la fonction depth(lat, lon)

@@ -1,3 +1,5 @@
 __pycache__/
 *.py[cod]
 *$py.class
+tsunami/__pycache__/geo.cpython-313.pyc
+tsunami/__pycache__/speed_integrator.cpython-313.pyc
