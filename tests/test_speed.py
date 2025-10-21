@@ -1,5 +1,5 @@
-from geo import arc_length_m
-from speed_integrator import travel_time_seconds
+from tsunami.geo import arc_length_m
+from tsunami.speed_integrator import travel_time_seconds
 import numpy as np
 
 def fake_depth(lat, lon):
