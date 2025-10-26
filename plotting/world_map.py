@@ -4,6 +4,7 @@ from matplotlib.colors import ListedColormap, Normalize
 from matplotlib.ticker import FuncFormatter
 
 from tsunami.io_etopo import load_etopo5
+from plotting.paths import plot_great_circle
 
 def _wrap_to_180(lons):
     """Convertit une grille de longitudes [0, 360) en [-180, 180) et renvoie l'ordre de réindexation."""
@@ -41,10 +42,11 @@ def plot_world_etopo_with_stations(etopo_path="data/etopo5.grd",
                                    stations_csv="data/data_villes.csv",
                                    figsize=(12, 6),
                                    savepath="outputs/world_map.png",
-                                   title="Global bathymetry (oceans) with stations"):
+                                   title="Global bathymetry (oceans) with stations",
+                                   paths=None,
+                                   path_style=None):
     """
     Carte ETOPO5 recadrée en [-180,180), continents grisés, océan coloré.
-    - Colorbar en profondeur positive (m).
     """
     # 1) Charger la grille
     lats, lons, H, _ = load_etopo5(etopo_path)  # H: [nlat, nlon], lats/lons croissants (selon ton loader)
@@ -132,7 +134,17 @@ def plot_world_etopo_with_stations(etopo_path="data/etopo5.grd",
     except FileNotFoundError:
         pass
 
-    # 11) Sauvegarde + affichage
+    # 12) Trajets
+    if paths:
+        default_style = {"color": "red", "lw": 2, "alpha": 0.9}
+        if path_style:
+            default_style |= path_style
+        for p in paths:
+            s = default_style | p.get("style", {})
+            npts = p.get("npts", 1001)
+            plot_great_circle(ax, p["lat1"], p["lon1"], p["lat2"], p["lon2"], npts=npts, **s)
+
+    # 13) Sauvegarde + affichage
     import os
     os.makedirs(os.path.dirname(savepath), exist_ok=True)
     fig.tight_layout()
@@ -142,11 +154,17 @@ def plot_world_etopo_with_stations(etopo_path="data/etopo5.grd",
     return fig, ax
 
 
-if __name__ == "__main__":
-    plot_world_etopo_with_stations(
-        etopo_path="data/etopo5.grd",
-        stations_csv="data/data_villes.csv",
-        figsize=(12, 6),
-        savepath="outputs/world_map.png",
-        title="Project Tsunami — ETOPO5 & Stations"
-    )
+paths = [
+    {"lat1": 41.7878, "lon1": 140.7090,  # Hakodate
+     "lat2": 34.05, "lon2": -118.25, # Los Angeles
+     "npts": 1201, "style": {"color": "crimson", "lw": 2.5}}
+]
+
+plot_world_etopo_with_stations(
+    etopo_path="data/etopo5.grd",
+    stations_csv="data/data_villes.csv",
+    savepath="outputs/world_map.png",
+    title="Project Tsunami — ETOPO5, Stations & Path",
+    paths=paths,
+    path_style={"zorder": 6, "alpha": 0.95}
+)
