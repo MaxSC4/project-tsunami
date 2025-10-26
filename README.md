@@ -27,20 +27,17 @@ Starting from a global bathymetric dataset (*ETOPO5*) and a set of observed arri
 
 2. **Geometrical modelling** — Great-circle distances and trajectories between points on the Earth’s surface are computed using spherical trigonometry.  
 
-3. **Velocity model** — Tsunami phase velocity is approximated with the shallow-water relation:  
-   \[
-   v = \sqrt{g \, h}
-   \]
-   where \( g = 9.81 \, \mathrm{m/s^2} \) and \( h \) is the local water depth.
+3. **Velocity model** — Tsunami phase velocity is approximated with the shallow-water relation $$v = \sqrt{gh}$$, where $$g = 9.81\,\mathrm{m/s^2}$$ and $$h$$ is the local water depth.
 
-4. **Travel-time computation** — The propagation time between a source and each observation station is obtained by integrating the inverse velocity along the great-circle path:  
-   \[
-   T = \int_{\text{path}} \frac{ds}{v(h(s))}
-   \]
+4. **Travel-time computation** — The propagation time between a source and each observation station is obtained by integrating the inverse velocity along the great-circle path:
 
-5. **Inversion** — A grid search minimizes the least-squares misfit between observed and modeled arrival times:  
-*W.I.P*
+$$
+T = \int_{\text{path}} \frac{ds}{v\left(h(s)\right)}
+$$
 
+5. **Inversion** — A grid search minimizes the least-squares misfit between observed and modeled arrival times:
+
+*WIP*
 ---
 
 ## 🧮 Physical assumptions
