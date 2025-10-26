@@ -7,6 +7,12 @@
 
 ---
 
+<p align="center">
+  <img src="outputs/world_map.png" alt="Global bathymetry with stations" width="90%">
+</p>
+
+---
+
 ## 📘 Overview
 
 This project was developed as part of the *"Analyse de données en Géosciences"* course in the M1 Geology program at the **Institut de Physique du Globe de Paris (IPGP)**, under the supervision of **E. Gaier**.
