@@ -38,7 +38,7 @@ def load_etopo5(path):
     return lats, lons, H, nodata
 
 
-def make_depth_map(lats, lons, H):
+def make_depth_map(lats, lons, H, order=1):
     nrows, ncols = H.shape
     dlat = float(lats[1] - lats[0])
     dlon = float(lons[1] - lons[0])
@@ -59,7 +59,7 @@ def make_depth_map(lats, lons, H):
 
         coords = np.vstack([i, j])
 
-        vals = map_coordinates(H, coords, order=1, mode="nearest")
+        vals = map_coordinates(H, coords, order=order, mode="nearest")
 
         return vals.astype(float)
 

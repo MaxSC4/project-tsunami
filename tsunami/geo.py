@@ -32,6 +32,12 @@ def great_circle_points(lat1, lon1, lat2, lon2, npts=400):
     return np.array(pts)
 
 def arc_length_m(lat1, lon1, lat2, lon2):
-    phi1, lambda1, phi2, lambda2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
-    w = np.arccos(np.sin(phi1) * np.sin(phi2) + np.cos(phi1) * np.cos(phi2) * np.cos(lambda2 - lambda1))
+    if lat1 == lat2 and lon1 == lon2:
+        return 0.0
+
+    phi1, lam1, phi2, lam2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
+    c = (np.sin(phi1) * np.sin(phi2) + np.cos(phi1) * np.cos(phi2) * np.cos(lam2 - lam1))
+
+    c = np.clip(c, -1.0, 1.0)
+    w = np.arccos(c)
     return R_EARTH * w
