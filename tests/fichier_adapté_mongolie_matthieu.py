@@ -228,28 +228,40 @@ plot_topo_profile(s_km, depths_m, title="Pacifique → Japon (profil bathy)")
 
 
 #%%
-def zone_depart(lat_min, lat_max, lon_min, lon_max, step=2.0):
+"""def zone_depart(lat_min, lat_max, lon_min, lon_max, step=2.0):
     coords=[]
 
     for lat in np.arange(lat_min, lat_max + step, step):
         for lon in np.arange(lon_min, lon_max + step, step):
             coords.append([lat, lon])
     coords = np.array(coords)       
-    return coords
+    return coords"""
     
+
+
+def zone_depart(lat_min, lat_max, lon_min, lon_max, n_div=10):
     """
-   Génère une liste de coordonnées (lat, lon)
-   dans une zone rectangulaire définie par ses bornes et un pas donné.
+    Génère une grille régulière de coordonnées (lat, lon)
+    avec le même nombre de divisions en latitude et longitude.
 
-   Paramètres :
-       lat_min, lat_max : bornes de latitude (°)
-       lon_min, lon_max : bornes de longitude (°)
-       step : pas entre deux points (°)
+    Paramètres :
+        lat_min, lat_max : bornes de latitude (°)
+        lon_min, lon_max : bornes de longitude (°)
+        n_div : nombre de divisions (le même pour lat et lon)
+                => il y aura (n_div + 1) points sur chaque axe
 
-   Retour :
-       coords : liste de tuples (lat, lon)
-   """
-   
+    Retour :
+        coords : tableau numpy de couples (lat, lon)
+    """
+
+    # Génère des valeurs régulièrement espacées pour latitudes et longitudes
+    lats = np.linspace(lat_min, lat_max, n_div + 1)
+    lons = np.linspace(lon_min, lon_max, n_div + 1)
+
+    # Produit cartésien des deux ensembles (grille complète)
+    coords = np.array([[lat, lon] for lat in lats for lon in lons])
+
+    return coords
 
 
 #%%
@@ -295,3 +307,76 @@ print(f"Vitesse  : {v:.1f} m/s")
 print(f"Théorique: {T_theo/3600:.2f} h")
 print(f"Numérique: {T_num/3600:.2f} h")
 print(f"Écart : {100*(T_num - T_theo)/T_theo:.2f} %")
+
+
+
+
+
+#%% FONCTION OU EST LA SOURCE
+
+"""Modifier la fonction initiale zone pour definir un pas en nombre de division """
+
+def localisation("""lambda phi maxmin, n  precision et try max """):
+    while lambda_max-lambda_min> precision and tries < TRY_MAX:
+        area =zone_depart(lat_min, lat_max, lon_min, lon_max)
+        len(lambda), len(phi)=(lambda_max-lambda_min/n),(phi_max-phi_min/n)
+        candidates=[]
+        for (lat_c, lon_c) in area: #coorodonées du point candidat dans la zone preparée
+            travel_times=[]         #liste qui comprend les temps de trajet pour chaque point candidat et toute les reception
+            for( lat_s,lon_s) in stations:  #on prepare la liste des points d'arrivées, les coordonées des stations
+                T=travel_time_seconds(lat_c,lonc_c, lat_s, lon_s, depth)
+                travel_times.append(T)
+            candidates.append(lat_c,lon_c,travel_times)
+        gap_candidates=[]
+        for c in candidates:
+            travel_c=c[2]
+            for i in (len(travel_c)-1):
+                ddelta_i=(travel_c[i+1]-travel_c[i])-(delta_d[i+1]-delta_d[i])
+                sum_delta+=delta_i
+                gap_candidates.append(c[0],c[1],sum_delta)
+        mask=np.min(gap_candidates[:,2])
+        lat_min, lon_min, sum_min=gap_candidates[mask]
+        
+        lambda_min=lat_min
+        lambda_max=lambda_min+len_lambda
+        phi_min=lon_min
+        phi_max=phi_min+len_phi
+        tries+=1
+        return(lat_min,lon_min, sum_min)
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
