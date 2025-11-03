@@ -271,7 +271,7 @@ def zone_depart(lat_min, lat_max, lon_min, lon_max, n_div=10):
 lat_arrivee, lon_arrivee = 40.0, 140.0
 
 # Définition de la zone de départ 
-zone = zone_depart(lat_min=-50, lat_max=50, lon_min=120, lon_max=260, step=10.0)
+zone = zone_depart(lat_min=-50, lat_max=50, lon_min=120, lon_max=260)
 
 # Liste pour stocker les résultats
 resultats = []
@@ -308,42 +308,92 @@ print(f"Théorique: {T_theo/3600:.2f} h")
 print(f"Numérique: {T_num/3600:.2f} h")
 print(f"Écart : {100*(T_num - T_theo)/T_theo:.2f} %")
 
-
+#%%
 
 
 
 #%% FONCTION OU EST LA SOURCE
 
 """Modifier la fonction initiale zone pour definir un pas en nombre de division """
+def localisation(lat_min, lat_max, lon_min, lon_max, stations, delta_d,
+                 depth, n_div=10, precision=1.0, TRY_MAX=5):
+    """
+    Recherche la localisation de la source du tsunami en comparant
+    les temps de parcours calculés et les temps observés (delta_d).
 
-def localisation("""lambda phi maxmin, n  precision et try max """):
-    while lambda_max-lambda_min> precision and tries < TRY_MAX:
-        area =zone_depart(lat_min, lat_max, lon_min, lon_max)
-        len(lambda), len(phi)=(lambda_max-lambda_min/n),(phi_max-phi_min/n)
-        candidates=[]
-        for (lat_c, lon_c) in area: #coorodonées du point candidat dans la zone preparée
-            travel_times=[]         #liste qui comprend les temps de trajet pour chaque point candidat et toute les reception
-            for( lat_s,lon_s) in stations:  #on prepare la liste des points d'arrivées, les coordonées des stations
-                T=travel_time_seconds(lat_c,lonc_c, lat_s, lon_s, depth)
+    Paramètres :
+        lat_min, lat_max : bornes de latitude (°)
+        lon_min, lon_max : bornes de longitude (°)
+        stations : liste de tuples (lat, lon) des stations
+        delta_d : liste des temps observés (s)
+        depth : fonction depth(lat, lon)
+        n_div : nombre de divisions pour la grille de recherche
+        precision : critère d'arrêt sur la taille de la zone (°)
+        TRY_MAX : nombre maximum d’itérations
+
+    Retour :
+        (lat_best, lon_best, erreur_min)
+    """
+
+    tries = 0
+    lat_best = lon_best = erreur_min = np.nan
+
+    # Boucle d’affinement progressive
+    while (abs(lat_max - lat_min) > precision or abs(lon_max - lon_min) > precision) and tries < TRY_MAX:
+        # Génération de la grille de points candidats dans la zone actuelle
+        area = zone_depart(lat_min, lat_max, lon_min, lon_max, n_div=n_div)
+        len_lambda = (lat_max - lat_min) / n_div
+        len_phi = (lon_max - lon_min) / n_div
+
+        candidats = []
+
+        # Boucle sur chaque point candidat
+        for (lat_c, lon_c) in area:
+            travel_times = []
+
+            # Calcul du temps vers chaque station
+            for (lat_s, lon_s) in stations:
+                T = travel_time_seconds(lat_c, lon_c, lat_s, lon_s, depth)
                 travel_times.append(T)
-            candidates.append(lat_c,lon_c,travel_times)
-        gap_candidates=[]
-        for c in candidates:
-            travel_c=c[2]
-            for i in (len(travel_c)-1):
-                ddelta_i=(travel_c[i+1]-travel_c[i])-(delta_d[i+1]-delta_d[i])
-                sum_delta+=delta_i
-                gap_candidates.append(c[0],c[1],sum_delta)
-        mask=np.min(gap_candidates[:,2])
-        lat_min, lon_min, sum_min=gap_candidates[mask]
-        
-        lambda_min=lat_min
-        lambda_max=lambda_min+len_lambda
-        phi_min=lon_min
-        phi_max=phi_min+len_phi
-        tries+=1
-        return(lat_min,lon_min, sum_min)
-            
+
+            # On saute les points invalides
+            if not np.all(np.isfinite(travel_times)):
+                continue
+
+            # Comparaison aux temps observés (delta_d)
+            sum_delta = 0.0
+            for i in range(len(travel_times) - 1):
+                delta_i = (travel_times[i + 1] - travel_times[i]) - (delta_d[i + 1] - delta_d[i])
+                sum_delta += abs(delta_i)
+
+            candidats.append((lat_c, lon_c, sum_delta))
+
+        # Si aucun candidat valide
+        if not candidats:
+            print(" Aucun point candidat valide (terre ou NaN).")
+            break
+
+        # Trouver le candidat avec la plus petite erreur
+        candidats = np.array(candidats, dtype=float)
+        idx_best = np.argmin(candidats[:, 2])
+        lat_min, lon_min, erreur_min = candidats[idx_best]
+        lat_best, lon_best = lat_min, lon_min
+
+        # Mise à jour de la zone autour du meilleur point
+        lambda_min = lat_best - len_lambda
+        lambda_max = lat_best + len_lambda
+        phi_min = lon_best - len_phi
+        phi_max = lon_best + len_phi
+
+        # Mise à jour des bornes pour la prochaine itération
+        lat_min, lat_max = lambda_min, lambda_max
+        lon_min, lon_max = phi_min, phi_max
+
+        tries += 1
+
+        print(f"→ Iter {tries}: ({lat_best:.2f}, {lon_best:.2f}), erreur = {erreur_min:.3f}")
+
+    return lat_best, lon_best, erreur_min
 
 
 
@@ -354,12 +404,7 @@ def localisation("""lambda phi maxmin, n  precision et try max """):
 
 
 
-
-
-
-
-
-
+#%% fabrication de delta D
 
 
 
