@@ -62,7 +62,7 @@ While simplified, this approach captures first-order travel-time variations due 
 - [**Maxime Soares Correia**](https://maxsc4.github.io/)  
 - **Matthieu Courcelles**
 
-Supervised by **Eric Gaier**, as part of the *U.E. Analyse de données en Géosciences* course,  
+Supervised by **Eric Gayer**, as part of the *U.E. Analyse de données en Géosciences* course,  
 M1 Geology — IPGP, 2025.
 
 ---
