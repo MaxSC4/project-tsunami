@@ -7,10 +7,10 @@ Ce script :
     3) exécute l'inversion robuste pour estimer la source (lat, lon, t0*),
     4) affiche/sauvegarde une carte avec la source, les stations et les trajets.
 """
-
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import datetime
 
 from tsunami.io_etopo import load_etopo5, make_depth_function
 from tsunami.observations import load_arrival_times
@@ -136,7 +136,16 @@ def run_pipeline(
     print("\n=== Inversion result ===")
     print(f"Source latitude   : {best_lat:.3f}°")
     print(f"Source longitude  : {best_lon:.3f}°")
-    print(f"Estimated t0*     : {t0:.1f} s")
+
+    # Conversion du temps POSIX (secondes) en date UTC
+    try:
+        t0_datetime = datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc)
+        t0_str = t0_datetime.strftime("%Y-%m-%d %H:%M:%S %Z")
+        print(f"Estimated t0*     : {t0:.1f} s (POSIX time)")
+        print(f"                   → {t0_str}")
+    except (OSError, OverflowError, ValueError):
+        print(f"Estimated t0*     : {t0:.1f} s (not a valid POSIX timestamp)")
+
     print(f"RMS misfit        : {stats['misfit']:.2f} s")
     print(f"Valid stations    : {stats.get('valid', 'n/a')}")
 

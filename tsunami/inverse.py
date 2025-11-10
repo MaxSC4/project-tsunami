@@ -112,11 +112,4 @@ def triangulation_inversion(
         lam_max = best["lon"] + dlon
         tries += 1
 
-    if verbose:
-        print("\nInversion terminée.")
-        print(f"→ Latitude : {best['lat']:.3f}°")
-        print(f"→ Longitude : {best['lon']:.3f}°")
-        print(f"→ t₀ estimé : {best['t0']:.1f} s")
-        print(f"→ Misfit RMS : {best['misfit']:.2f} s")
-
     return best["lat"], best["lon"], best["t0"], best
