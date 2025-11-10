@@ -2,7 +2,9 @@
 
 ### M1 Geology — *Institut de Physique du Globe de Paris (IPGP)*
 **Course:** *Analyse de données en Géosciences*
-**Supervision:** *E. Gaier, C. Narteau*
+
+**Supervision:** *E. Gayer, C. Narteau, F. Beauducel*
+
 **Authors:** [**Maxime Soares Correia**](https://maxsc4.github.io/) & **Matthieu Courcelles**
 
 ---
@@ -49,22 +51,21 @@ All paths and distances are computed on a spherical Earth using trigonometric fo
 ### 3. Velocity model
 Wave phase speed is approximated by the shallow-water relation:
 
-\[
+$$
 v = \sqrt{g\,h}
-\]
-
+$$
 where:
-- \( g = 9.81 \, \mathrm{m/s^2} \) is gravity,
-- \( h \) is the local water depth (in meters).
+- **$g = 9.81 m/s²$** is the gravitational acceleration
+- **$h$** is the local water depth (in meters)
 
 ---
 
 ### 4. Travel-time computation
 The tsunami travel time between two points is obtained by integrating along the path:
 
-\[
+$$
 T = \int_{\text{path}} \frac{ds}{v(h(s))}
-\]
+$$
 
 The integration is **vectorized** for efficiency and ignores land or shallow coastal points automatically.
 
@@ -73,13 +74,13 @@ The integration is **vectorized** for efficiency and ignores land or shallow coa
 ### 5. Source inversion
 A **robust adaptive grid search** estimates:
 - the **source latitude & longitude**, and
-- the **origin time** \( t_0^* \)
+- the **origin time** $t_0^*$
 
 by minimizing a physically meaningful **RMS misfit** between observed and modeled arrival times:
 
-\[
+$$
 \text{misfit} = \sqrt{\frac{1}{N}\sum_i \left(t_{\text{obs},i} - (t_0^* + T_{\text{model},i})\right)^2}
-\]
+$$
 
 Outliers are handled through *median-based estimation* and *clipping*.
 
@@ -176,7 +177,7 @@ project-tsunami/
 - [**Maxime Soares Correia**](https://maxsc4.github.io/)
 - **Matthieu Courcelles**
 
-Supervised by **Eric Gayer**, as part of the *U.E. Analyse de données en Géosciences* course,
+Supervised by **Eric Gayer, Clément Narteau** and **François Beauducel**, as part of the *U.E. Analyse de données en Géosciences* course,
 M1 Geology — IPGP (2025).
 
 ---
