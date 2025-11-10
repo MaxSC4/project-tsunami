@@ -54,6 +54,7 @@ Wave phase speed is approximated by the shallow-water relation:
 $$
 v = \sqrt{g\,h}
 $$
+
 where:
 - **$g = 9.81 m/s²$** is the gravitational acceleration
 - **$h$** is the local water depth (in meters)
