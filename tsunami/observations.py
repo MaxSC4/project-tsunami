@@ -17,10 +17,3 @@ def load_arrival_times(csv_path):
     times_posix = times_posix.to_numpy(dtype=float)
 
     return df, times_posix
-
-#Example d'utilisation :
-#-----------------------
-df, t_obs_s = load_arrival_times("data/data_villes.csv")
-
-print(df[["Ville/Port", "datetime"]])
-print("Heures d'arrivée en secondes :", t_obs_s)
