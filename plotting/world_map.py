@@ -1,3 +1,12 @@
+"""
+Carte globale simple pour visualiser :
+    - la bathymétrie (ETOPO) avec une palette claire,
+    - une source de tsunami (marqueur et cercle d'incertitude optionnel),
+    - les trajets (grands cercles) de la source vers les stations,
+    - les stations avec leurs noms et une légende.
+"""
+
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, Normalize
@@ -6,205 +15,211 @@ from matplotlib.ticker import FuncFormatter
 from tsunami.io_etopo import load_etopo5
 from tsunami.geo import great_circle_points
 
-# ---------------------- utils longitudes/latitudes ----------------------
 
-def _lon_to_180(lon):
-    """scalaire -> [-180,180)"""
-    out = ((float(lon) + 180.0) % 360.0) - 180.0
-    return -180.0 if out == 180.0 else out
+# ---------------------------------------------------------------------
+# 1) Petites fonctions utilitaires
+# ---------------------------------------------------------------------
 
-def _lon_to_360(lon):
-    """scalaire -> [0,360)"""
-    out = float(lon) % 360.0
-    return out + 360.0 if out < 0 else out
-
-def _arr_lon_to_180(arr):
-    arr = np.asarray(arr, dtype=float)
-    out = ((arr + 180.0) % 360.0) - 180.0
+def _wrap180(lon):
+    """Met une longitude dans l'intervalle [-180, 180)."""
+    out = (np.asarray(lon, float) + 180.0) % 360.0 - 180.0
+    if np.isscalar(lon):
+        return float(-180.0 if out == 180.0 else out)
     out[out == 180.0] = -180.0
     return out
 
-def _arr_lon_to_360(arr):
-    arr = np.asarray(arr, dtype=float) % 360.0
-    out = np.where(arr < 0, arr + 360.0, arr)
+def _wrap360(lon):
+    """Met une longitude dans l'intervalle [0, 360)."""
+    out = np.asarray(lon, float) % 360.0
+    if np.isscalar(lon):
+        return float(out + 360.0 if out < 0 else out)
+    out = np.where(out < 0, out + 360.0, out)
     return out
 
-def _flip_lat_for_imshow(lat_vals, lat_min, lat_max):
-    """Si la matrice n'est pas retournée mais on utilise origin='lower', il faut inverser Y pour les overlays."""
-    return lat_max + lat_min - lat_vals
-
-# ---------------------- stations ----------------------
+def _split_on_dateline(lons):
+    """
+    Découpe une polyligne quand le saut de longitude dépasse 180°.
+    Renvoie une liste d'indices de segments (pour tracer sans traverser la carte).
+    """
+    lons = np.asarray(lons, float)
+    if lons.size == 0:
+        return []
+    jumps = np.abs(np.diff(lons)) > 180.0
+    idx = np.where(jumps)[0] + 1
+    parts = np.split(np.arange(lons.size), idx)
+    return parts
 
 def _read_stations_csv(csv_path):
-    """Lit un fichier de stations (colonnes: Ville/Port, Latitude_N, Longitude_E, ...)."""
+    """
+    Lit un CSV de stations minimal (colonnes au moins: name, lat, lon).
+    Si ton fichier a d'autres noms de colonnes, adapte le mapping ci-dessous.
+    """
     import pandas as pd
-    df = pd.read_csv(csv_path, sep=r"\s+", engine="python")
-    colmap = {"Ville/Port": "name", "Latitude_N": "lat", "Longitude_E": "lon"}
-    df = df.rename(columns={k: v for k, v in colmap.items() if k in df.columns})
-    required = {"name", "lat", "lon"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Missing required columns in stations CSV: {missing}")
+    df = pd.read_csv(csv_path, sep=r"\s+|,|;", engine="python")
+    # Mapping souple pour s'adapter au fichier fourni dans data_villes.csv
+    mapping = {
+        "Ville/Port": "name",
+        "Latitude_N": "lat",
+        "Longitude_E": "lon",
+        "name": "name",
+        "lat": "lat",
+        "lon": "lon",
+    }
+    cols = {c: mapping.get(c, c) for c in df.columns}
+    df = df.rename(columns=cols)
+    for col in ("name", "lat", "lon"):
+        if col not in df.columns:
+            raise ValueError(f"Colonne manquante dans le CSV: {col}")
     df["name"] = df["name"].astype(str).str.replace("_", " ")
     df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
     df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
     df = df.dropna(subset=["lat", "lon"])
+    # Sortie: liste de dicts {"name":..., "lat":..., "lon":...}
     return df[["name", "lat", "lon"]].to_dict("records")
 
-# ---------------------- tracés : path & source ----------------------
 
-def _split_on_boundary(x, boundary):
-    """
-    Découpe les segments lorsqu'on traverse un bord:
-      - si boundary == 180 → teste |diff| > 180 (cas [-180,180))
-      - si boundary == 0   → teste |diff| > 180 (cas [0,360))
-    """
-    d = np.diff(x)
-    # traversée "longue" -> on split
-    jumps = np.abs(d) > 180.0
-    idx = np.where(jumps)[0] + 1
-    parts = np.split(np.arange(len(x)), idx)
-    return parts
+# ---------------------------------------------------------------------
+# 2) Tracés : grands cercles, source, stations
+# ---------------------------------------------------------------------
 
-def _plot_gc_path(ax, lat1, lon1, lat2, lon2, npts,
-                  lat_min, lat_max, lon_mode="180",
-                  flip_lat=False, **style):
+def _plot_great_circle(ax, lat1, lon1, lat2, lon2, npts=1001, lon_mode="180", line_kwargs=None):
     """
-    Trace un grand cercle en gérant:
-      - le repère lon_mode: '180' ([-180,180)) ou '360' ([0,360))
-      - la découpe au bord (±180 ou 0/360)
-      - le flip Y pour coller à imshow(origin='lower') si nécessaire
+    Trace le grand cercle entre (lat1, lon1) et (lat2, lon2).
+    Gère le wrap longitudes et coupe aux bords pour un rendu propre.
     """
     pts = great_circle_points(lat1, lon1, lat2, lon2, npts=npts)
     lats = pts[:, 0]
     lons = pts[:, 1]
+    lons = _wrap180(lons) if lon_mode == "180" else _wrap360(lons)
 
-    if lon_mode == "180":
-        lons = _arr_lon_to_180(lons)
-        boundary = 180.0
-    else:
-        lons = _arr_lon_to_360(lons)
-        boundary = 0.0  # conceptuel; on découpe quand saut > 180
-
-    if flip_lat:
-        lats = _flip_lat_for_imshow(lats, lat_min, lat_max)
-
-    for seg in _split_on_boundary(lons, boundary):
+    parts = _split_on_dateline(lons)
+    style = {"lw": 2.0, "color": "crimson", "alpha": 0.9}
+    if line_kwargs:
+        style.update(line_kwargs)
+    for seg in parts:
         ax.plot(lons[seg], lats[seg], **style)
 
-def _plot_source(ax, lat, lon, lat_min, lat_max,
-                 lon_mode="180", label=None, radius_km=None, flip_lat=False, style=None, zorder=8):
-    """Marque la source estimée (+ cercle d’incertitude optionnel)."""
+def _plot_source(ax, lat, lon, lon_mode="180", label="Source", radius_km=None, style=None, zorder=8):
+    """Affiche la source (étoile dorée) et un cercle d’incertitude optionnel."""
     if lat is None or lon is None:
         return
-    st = {"marker": "*", "s": 170, "c": "gold", "edgecolors": "k", "linewidths": 0.9}
+    x = _wrap180(lon) if lon_mode == "180" else _wrap360(lon)
+    y = float(lat)
+
+    st = {"marker": "*", "s": 180, "c": "gold", "edgecolors": "k", "linewidths": 0.9}
     if style:
         st.update(style)
 
-    x = _lon_to_180(lon) if lon_mode == "180" else _lon_to_360(lon)
-    y = float(lat)
-    if flip_lat:
-        y = _flip_lat_for_imshow(y, lat_min, lat_max)
-
     ax.scatter([x], [y], zorder=zorder, **st)
     if label:
-        ax.text(x + 1.0, y + 0.8, label, fontsize=9, weight="bold", color="k", zorder=zorder+1)
+        ax.text(x + 1.0, y + 0.8, str(label), fontsize=9, weight="bold", color="k", zorder=zorder+1)
 
     if radius_km and radius_km > 0:
-        Rdeg = radius_km / 111.0
+        # Cercle approximatif (en degrés) autour de la source
+        Rdeg = radius_km / 111.0  # ~conversion km→deg
         theta = np.linspace(0, 2*np.pi, 361)
         lat_c = float(lat) + Rdeg * np.sin(theta)
         coslat = max(np.cos(np.deg2rad(float(lat))), 1e-6)
         lon_c = float(lon) + (Rdeg / coslat) * np.cos(theta)
-        if lon_mode == "180":
-            lon_c = _arr_lon_to_180(lon_c)
-        else:
-            lon_c = _arr_lon_to_360(lon_c)
-        if flip_lat:
-            lat_c = _flip_lat_for_imshow(lat_c, lat_min, lat_max)
+        lon_c = _wrap180(lon_c) if lon_mode == "180" else _wrap360(lon_c)
         ax.plot(lon_c, lat_c, color=st.get("c", "gold"), alpha=0.7, lw=1.2, zorder=zorder-1)
 
-# ---------------------- carte principale ----------------------
+def _plot_stations(ax, stations, lon_mode="180", with_labels=True):
+    """Place les stations, et affiche leurs noms si demandé."""
+    xs = []
+    ys = []
+    names = []
+    for s in stations:
+        names.append(s.get("name", ""))
+        ys.append(float(s["lat"]))
+        xs.append(_wrap180(s["lon"]) if lon_mode == "180" else _wrap360(s["lon"]))
+    xs = np.asarray(xs, float)
+    ys = np.asarray(ys, float)
+    ax.scatter(xs, ys, s=36, c="k", edgecolors="white", linewidths=0.8, zorder=5, label="Stations")
+    if with_labels:
+        for name, x, y in zip(names, xs, ys):
+            if name:
+                ax.text(x + 1.2, y + 0.8, name, fontsize=8, color="k", zorder=6)
 
-def plot_world_etopo_with_stations(etopo_path="data/etopo5.grd",
-                                   stations_csv="data/data_villes.csv",
-                                   figsize=(12, 6),
-                                   savepath="outputs/world_map.png",
-                                   title="Global bathymetry (oceans) with stations",
-                                   paths=None,
-                                   path_style=None,
-                                   source=None,
-                                   lon_mode="180"):   # '180' → [-180,180), '360' → [0,360) (Pacifique centré)
+
+# ---------------------------------------------------------------------
+# 3) Carte principale (fonction unique, simple)
+# ---------------------------------------------------------------------
+
+def plot_world_map(
+    etopo_path="data/etopo5.grd",
+    stations=None,                # liste [{"name","lat","lon"}, ...] OU chemin CSV (str) OU None
+    source=None,                  # dict ex: {"lat":..., "lon":..., "label":..., "radius_km":200}
+    lon_mode="180",               # "180" → [-180,180) ; "360" → [0,360)
+    figsize=(12, 6),
+    title="Global bathymetry with stations",
+    ocean_cmap="Blues_r",         # palette océan (foncé = profond)
+    land_color="0.85",            # gris clair pour les terres
+    show_colorbar=True,
+    path_style=None,              # style par défaut des traits de grands cercles
+    savepath=None,                # si non None → sauvegarde
+    show=True                     # si True → plt.show()
+):
     """
-    - lon_mode='180' : carte centrée sur Greenwich (par défaut)
-    - lon_mode='360' : carte centrée Pacifique (0..360), évite les effets de dateline
-    - paths: [{"lat1","lon1","lat2","lon2","npts","style":{...}}, ...]
-    - source: {"lat":..., "lon":..., "label":..., "radius_km":..., "style":{...}}
+    Trace une carte globale simple et renvoie (fig, ax).
+    - Si `stations` est une chaîne, on suppose un CSV à lire.
+    - Si `stations` est une liste de dicts, on l’utilise directement.
+    - Si `source` est fourni, on trace la source + ses trajets vers chaque station.
     """
-    # 1) Charger la grille
+    # 1) Charger la grille ETOPO (altitudes : négatives en mer, positives à terre)
     lats, lons, H, _ = load_etopo5(etopo_path)
 
-    # 2) Construire l'axe longitude et ré-ordonner H selon lon_mode
+    # 2) Réordonner en longitude selon le mode choisi
     if lon_mode == "180":
-        # on travaille en [-180,180)
-        lons_wrapped = _arr_lon_to_180(lons)
+        lons_wrapped = _wrap180(lons)
         order = np.argsort(lons_wrapped)
         xlon = lons_wrapped[order]
         Hx = H[:, order]
         x_min, x_max = -180.0, 180.0
     else:
-        # on travaille en [0,360)
-        lons_wrapped = _arr_lon_to_360(lons)
+        lons_wrapped = _wrap360(lons)
         order = np.argsort(lons_wrapped)
         xlon = lons_wrapped[order]
         Hx = H[:, order]
         x_min, x_max = 0.0, 360.0
 
-    # 3) Orientation: H n'est pas retournée; avec imshow(origin='lower'), on doit flipper les overlays
-    H_plot = Hx
-    lat_min, lat_max = lats[0], lats[-1]
-    flip_lat = False  # IMPORTANT: pour stations/paths/source
-
-    # 4) Masques terre/océan
-    land_mask  = (H_plot >= 0.0)
-    ocean_mask = ~land_mask
-    land_img = np.where(land_mask, 1.0, np.nan)
-    ocean = np.where(ocean_mask, H_plot, np.nan)
-
-    # 5) Bornes océan
-    if np.all(np.isnan(ocean)):
-        raise ValueError("No ocean pixels detected in H_plot; check ETOPO data.")
-    vmin = np.nanpercentile(ocean, 5)
+    # 3) Masques terre/océan et bornes de couleurs
+    land_mask = (Hx >= 0.0)
+    ocean_vals = np.where(~land_mask, Hx, np.nan)  # altitudes négatives
+    if np.all(np.isnan(ocean_vals)):
+        raise ValueError("Aucun pixel océan détecté ; vérifie la grille ETOPO.")
+    vmin = np.nanpercentile(ocean_vals, 5)  # profondeur “courante”
     vmax = 0.0
 
+    # 4) Figure
     fig, ax = plt.subplots(figsize=figsize, dpi=120)
 
-    # 6) Terre en gris
-    land_cmap = ListedColormap(["0.8"])
+    # Terre en à-plat gris
+    land_img = np.where(land_mask, 1.0, np.nan)
     ax.imshow(
         land_img,
-        extent=[x_min, x_max, lat_min, lat_max],
+        extent=[x_min, x_max, lats[0], lats[-1]],
         origin="lower",
         interpolation="nearest",
-        cmap=land_cmap,
+        cmap=ListedColormap([land_color]),
         norm=Normalize(vmin=0.0, vmax=1.0),
         aspect="auto",
         zorder=1,
     )
 
-    # 7) Océan
+    # Océan (plus “bleu” quand c’est profond)
     im = ax.imshow(
-        ocean,
-        extent=[x_min, x_max, lat_min, lat_max],
+        ocean_vals,
+        extent=[x_min, x_max, lats[0], lats[-1]],
         origin="lower",
         interpolation="nearest",
-        cmap="Blues_r",
+        cmap=ocean_cmap,
         vmin=vmin, vmax=vmax,
         aspect="auto",
         zorder=2,
     )
 
-    # 8) Axes, titre
+    # Axes & grille
     ax.set_xlabel("Longitude (°E)")
     ax.set_ylabel("Latitude (°N)")
     if lon_mode == "180":
@@ -217,90 +232,86 @@ def plot_world_etopo_with_stations(etopo_path="data/etopo5.grd",
     ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.5)
     ax.set_title(title)
 
-    # 9) Colorbar
-    cb = fig.colorbar(im, ax=ax, pad=0.02, fraction=0.03,
-                      format=FuncFormatter(lambda x, pos: f"{int(abs(x))}"))
-    cb.set_label("Ocean depth (m)")
+    # Colorbar (graduée en mètres de profondeur)
+    if show_colorbar:
+        cb = fig.colorbar(im, ax=ax, pad=0.02, fraction=0.03, format=FuncFormatter(lambda x, pos: f"{int(abs(x))}"))
+        cb.set_label("Ocean depth (m)")
 
-    # 10) Stations
-    try:
-        stations = _read_stations_csv(stations_csv)
-        if stations:
-            xs = np.array([(_lon_to_180(s["lon"]) if lon_mode=="180" else _lon_to_360(s["lon"]))
-                           for s in stations], float)
-            ys = np.array([s["lat"] for s in stations], float)
-            if flip_lat:
-                ys = _flip_lat_for_imshow(ys, lat_min, lat_max)
-            ax.scatter(xs, ys, s=36, c="k", edgecolors="white", linewidths=0.8, zorder=5, label="Stations")
-            for s, x, y in zip(stations, xs, ys):
-                label = s["name"] if s["name"] else ""
-                if label:
-                    ax.text(x + 1.2, y + 0.8, label, fontsize=8, color="k", zorder=6)
-            ax.legend(loc="lower left", frameon=True)
-    except FileNotFoundError:
-        pass
+    # 5) Stations (entrée flexible)
+    station_list = []
+    if isinstance(stations, str) and stations:
+        try:
+            station_list = _read_stations_csv(stations)
+        except FileNotFoundError:
+            station_list = []
+    elif isinstance(stations, (list, tuple)):
+        station_list = list(stations)
 
-    # 11) Paths (grands cercles)
-    if paths:
-        default_style = {"color": "red", "lw": 2, "alpha": 0.9}
-        if path_style:
-            default_style |= path_style
-        for p in paths:
-            s = default_style | p.get("style", {})
-            npts = p.get("npts", 1001)
-            _plot_gc_path(
-                ax,
-                p["lat1"], p["lon1"], p["lat2"], p["lon2"],
-                npts=npts,
-                lat_min=lat_min, lat_max=lat_max,
-                lon_mode=lon_mode,
-                flip_lat=flip_lat,
-                **s
-            )
+    if station_list:
+        _plot_stations(ax, station_list, lon_mode=lon_mode, with_labels=True)
 
-    # 12) Source estimée (optionnelle)
-    if source:
+    # 6) Source + trajets vers les stations
+    if source and ("lat" in source) and ("lon" in source):
         _plot_source(
             ax,
-            lat=source.get("lat"),
-            lon=source.get("lon"),
+            lat=source["lat"],
+            lon=source["lon"],
+            lon_mode=lon_mode,
             label=source.get("label", "Estimated source"),
             radius_km=source.get("radius_km"),
             style=source.get("style"),
-            lat_min=lat_min, lat_max=lat_max,
-            lon_mode=lon_mode,
-            flip_lat=flip_lat,
             zorder=8
         )
+        if station_list:
+            default_style = {"color": "crimson", "lw": 2.0, "alpha": 0.9}
+            if path_style:
+                default_style.update(path_style)
+            for st in station_list:
+                _plot_great_circle(
+                    ax,
+                    source["lat"], source["lon"],
+                    st["lat"], st["lon"],
+                    npts=1001,
+                    lon_mode=lon_mode,
+                    line_kwargs=default_style
+                )
 
-    # 13) Sauvegarde + affichage
-    import os
-    os.makedirs(os.path.dirname(savepath), exist_ok=True)
+        if station_list:
+            ax.legend(loc="lower left", frameon=True)
+
+    # 7) Sauvegarde / affichage
     fig.tight_layout()
-    fig.savefig(savepath, bbox_inches="tight")
-    plt.show()
+    if savepath:
+        os.makedirs(os.path.dirname(savepath), exist_ok=True)
+        fig.savefig(savepath, bbox_inches="tight", dpi=150)
+    if show:
+        plt.show()
+
     return fig, ax
 
-"""
-plot_world_etopo_with_stations(
-    etopo_path="data/etopo5.grd",
-    stations_csv="data/data_villes.csv",
-    savepath="outputs/world_map.png",
-    title="ETOPO5 — Stations & Path",
-    lon_mode="180",           # [-180, 180)
-    paths=[{"lat1":41.7878,"lon1":140.7090,"lat2":34.05,"lon2":-118.25,
-            "npts":1001,"style":{"color":"crimson","lw":2.5}}],
-    source={"lat":24.89,"lon":151.40,"label":"Estimated source","radius_km":200}
-)
-"""
 
-plot_world_etopo_with_stations(
-    etopo_path="data/etopo5.grd",
-    stations_csv="data/data_villes.csv",
-    savepath="outputs/world_map_pacific.png",
-    title="ETOPO5 — Pacific-centered",
-    lon_mode="360",           # [0, 360)
-    #paths=[{"lat1":41.7878,"lon1":140.7090,"lat2":34.05,"lon2":-118.25,
-    #        "npts":1201,"style":{"color":"crimson","lw":2.5}}],
-    source={"lat":41.03,"lon":162.87,"label":"Estimated source","radius_km":200}
-)
+# ---------------------------------------------------------------------
+# 4) Exemple d’utilisation (exécutable directement)
+# ---------------------------------------------------------------------
+if __name__ == "__main__":
+    # Carte centrée “Greenwich” avec source + stations + trajets
+    plot_world_map(
+        etopo_path="data/etopo5.grd",
+        stations="data/data_villes.csv",
+        source={"lat": 24.9, "lon": 151.4, "label": "Estimated source", "radius_km": 200},
+        lon_mode="180",
+        title="ETOPO — Stations & great-circle paths",
+        savepath="outputs/world_map.png",
+        show=True
+    )
+
+    # Variante centrée Pacifique (0..360°)
+    plot_world_map(
+        etopo_path="data/etopo5.grd",
+        stations="data/data_villes.csv",
+        source={"lat": 41.03, "lon": 162.87, "label": "Source", "radius_km": 200},
+        lon_mode="360",
+        title="ETOPO — Pacific-centered",
+        savepath="outputs/world_map_pacific.png",
+        show=True
+    )
