@@ -16,6 +16,7 @@ from tsunami.io_etopo import load_etopo5, make_depth_function
 from tsunami.observations import load_arrival_times
 from tsunami.inverse import triangulation_inversion
 from plotting.world_map import plot_world_map
+from plotting.diagnostics import plot_obs_vs_model
 
 
 # --------------------------------------------------------------
@@ -90,7 +91,9 @@ def run_pipeline(
     max_iter=6,                     # itérations max de raffinement
     robust=True,                    # inversion robuste (médiane, clipping outliers)
     make_map=True,                  # tracer la carte finale
-    save_map_path="outputs/world_map_inversion.png"
+    save_map_path="outputs/world_map_inversion.png",
+    make_diagnostics=False,
+    diag_path="outpus/obs_vs_model.png"
 ):
     """
     Exécute le pipeline d'inversion et (optionnellement) produit une carte.
@@ -153,20 +156,40 @@ def run_pipeline(
     if make_map:
         print("→ Rendering world map...")
         _ensure_dir(save_map_path)
-        # Source pour la carte
+
         source = {
             "lat": best_lat,
             "lon": best_lon,
             "label": "Estimated source",
-            "radius_km": 20  # cercle indicatif (modifiable)
+            "radius_km": 20,
         }
+
         plot_world_map(
             etopo_path=etopo_path,
-            stations=station_list,   # liste de dicts "name/lat/lon"
+            stations=station_list,
             source=source,
             lon_mode=lon_mode,
             title="ETOPO — Stations & great-circle paths",
             savepath=save_map_path,
+            show=True
+        )
+
+    if make_diagnostics:
+        name_col = "Ville/Port" if "Ville/Port" in df.columns else ("name" if "name" in df.columns else None)
+        station_names = list(df[name_col].astype(str).str.replace("_", " ")) if name_col else None
+
+        print("→ Making diagnostics figure (observed vs modelled)...")
+        _ = plot_obs_vs_model(
+            t_obs_s=t_obs_s,
+            stations=stations,                # (Ns,2) lat,lon
+            src_lat=best_lat, src_lon=best_lon,
+            depth_fn=depth_fn,
+            station_names=station_names,
+            robust=True,
+            n_samples=800, h_min=50.0, shore_trim=10,
+            show_free_fit=True,
+            figpath=diag_path,
+            title="Observed vs modelled arrival times",
             show=True
         )
 
@@ -197,7 +220,9 @@ if __name__ == "__main__":
         max_iter=6,
         robust=True,
         make_map=True,
-        save_map_path="outputs/world_map_inversion.png"
+        save_map_path="outputs/world_map_inversion.png",
+        make_diagnostics=True,
+        diag_path="ouputs/obs_vs_model.png"
     )
 
     print("\nDone.")

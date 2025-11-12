@@ -15,7 +15,6 @@ from matplotlib.ticker import FuncFormatter
 from tsunami.io_etopo import load_etopo5
 from tsunami.geo import great_circle_points
 
-
 # ---------------------------------------------------------------------
 # 1) Petites fonctions utilitaires
 # ---------------------------------------------------------------------
