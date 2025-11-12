@@ -15,8 +15,10 @@ import datetime
 from tsunami.io_etopo import load_etopo5, make_depth_function
 from tsunami.observations import load_arrival_times
 from tsunami.inverse import triangulation_inversion
+
 from plotting.world_map import plot_world_map
 from plotting.diagnostics import plot_obs_vs_model
+from plotting.uncertainty import estimate_spatial_uncertainty
 
 
 # --------------------------------------------------------------
@@ -152,6 +154,31 @@ def run_pipeline(
     print(f"RMS misfit        : {stats['misfit']:.2f} s")
     print(f"Valid stations    : {stats.get('valid', 'n/a')}")
 
+    # --- 4bis) Estimation de l'incertitude spatiale ---
+    print("→ Estimating spatial uncertainty around source...")
+    unc = estimate_spatial_uncertainty(
+        best_lat, best_lon,
+        stations=stations,
+        t_obs_s=t_obs_s,
+        depth_fn=depth_fn,
+        span_lat_deg=4.0,
+        span_lon_deg=6.0,
+        step_deg=0.25,
+        rel_increase=0.15,      # +15% sur le RMSE
+        n_samples=800,
+        h_min=50.0,
+        shore_trim=10,
+        robust=True,
+    )
+
+    dlat_deg = unc["dlat_deg"]
+    dlon_deg = unc["dlon_deg"]
+    radius_km = unc["radius_km"]
+
+    print(f"Lat uncertainty   : Δφ ≈ {dlat_deg:.2f}°")
+    print(f"Lon uncertainty   : Δλ ≈ {dlon_deg:.2f}°")
+    print(f"Spatial radius    : ≈ {radius_km:.0f} km (effective)")
+
     # --- 5) Carte ---
     if make_map:
         print("→ Rendering world map...")
@@ -161,7 +188,7 @@ def run_pipeline(
             "lat": best_lat,
             "lon": best_lon,
             "label": "Estimated source",
-            "radius_km": 20,
+            "radius_km": radius_km if np.isfinite(radius_km) else 20.0,
         }
 
         plot_world_map(
@@ -222,7 +249,7 @@ if __name__ == "__main__":
         make_map=True,
         save_map_path="outputs/world_map_inversion.png",
         make_diagnostics=True,
-        diag_path="ouputs/obs_vs_model.png"
+        diag_path="outputs/obs_vs_model.png"
     )
 
     print("\nDone.")
