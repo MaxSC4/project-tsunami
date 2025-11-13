@@ -15,10 +15,12 @@ import datetime
 from tsunami.io_etopo import load_etopo5, make_depth_function
 from tsunami.observations import load_arrival_times
 from tsunami.inverse import triangulation_inversion
+from tsunami.speed_integrator import travel_time_seconds
 
 from plotting.world_map import plot_world_map
 from plotting.diagnostics import plot_obs_vs_model
 from plotting.uncertainty import estimate_spatial_uncertainty
+from plotting.table_arrival_times import build_residual_table, print_latex_table
 
 
 # --------------------------------------------------------------
@@ -219,6 +221,24 @@ def run_pipeline(
             title="Observed vs modelled arrival times",
             show=True
         )
+
+    # --- 6) Construire le tableau stations, temps obs/mod, temps ---
+    # Calcul des temps modélisés pour chaque station :
+    T_model = []
+    for lat_s, lon_s in stations:
+        T_model.append(
+            travel_time_seconds(best_lat, best_lon, lat_s, lon_s, depth_fn)
+        )
+    T_model = np.array(T_model)
+
+    # Ajouter la colonne t_obs_s si absente
+    df["t_obs_s"] = t_obs_s
+
+    # Construire le tableau
+    table = build_residual_table(df, T_model, output_csv="outputs/residuals_table.csv")
+
+    # Afficher le tableau LaTeX pour ton rapport
+    print_latex_table(table)
 
     # Résultats pour réutilisation
     return {
