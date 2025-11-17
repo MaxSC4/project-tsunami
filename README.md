@@ -58,7 +58,11 @@ This ensures physically realistic first-order propagation directions.
 
 ### 3. Tsunami speed model
 The project uses the classical shallow-water phase speed approximation:
-$$v(h) = \sqrt{g\,h}$$
+
+$$
+v(h) = \sqrt{g\,h}
+$$
+
 where:
 - **$h$** = local depth,
 - **$g = 9.81\ \text{m/s}^2$**.
@@ -69,7 +73,11 @@ This neglects dispersion and refraction, but remains valid for long-wavelength t
 
 ### 4. Travel-time computation
 Propagation time is obtained via numerical integration along the geodesic:
-$$T = \int_{\text{path}} \frac{ds}{v(h(s))}$$
+
+$$
+T = \int_{\text{path}} \frac{ds}{v(h(s))}
+$$
+
 The integrator in `speed_integrator.py`:
 - samples the path at hundreds to thousands of points,
 - evaluates depth at each point,
@@ -88,7 +96,11 @@ The inversion estimates:
 - **origin time** $t_0^*$
 
 by minimizing the physically meaningful RMS misfit:
-$$\text{misfit} =\sqrt{\frac{1}{N}\sum_i \Big(t_{\mathrm{obs},i} - (t_0^*  T_i)\Big)^2 }$$
+
+$$
+\text{misfit} =\sqrt{\frac{1}{N}\sum_i \Big(t_{\mathrm{obs},i} - (t_0^*  T_i)\Big)^2 }
+$$
+
 Key features:
 - **adaptive grid search** with progressive refinement,
 - **robust estimation** of $t_0^*$ using the median of residuals,
@@ -113,7 +125,7 @@ This diagnostic is essential for identifying systematic biases:
 - early/late detection at tide gauges.
 
 ### Misfit Profiles & Spatial Uncertainty
-The module `uncertainty/` introduces:
+The module `uncertainty` introduces:
 - **1D misfit profiles** along latitude and longitude,
 - **a paraboloid-like approximation** of the misfit bowl,
 - **uncertainty radii** based on a 15% RMSE threshold.
