@@ -13,7 +13,7 @@ def _ensure_dir(path: str):
     if d:
         os.makedirs(d, exist_ok=True)
 
-def compute_modeled_times(stations, src_lat, src_lon, depth_fn, n_samples=800, h_min=50.0, shore_trim=10):
+def compute_modeled_times(stations, src_lat, src_lon, depth_fn, n_samples=800, h_min=0.0):
     """
     Calcule T_i = temps de trajet modélisé (s) depuis la source (src_lat, src_lon)
     jusqu'à chaque station. Renvoie un np.array shape (Ns,) avec NaN si trajet impossible.
@@ -22,7 +22,7 @@ def compute_modeled_times(stations, src_lat, src_lon, depth_fn, n_samples=800, h
     Ns = stations.shape[0]
     T = np.full(Ns, np.nan, float)
     for i, (lat_s, lon_s) in enumerate(stations):
-        Ti = travel_time_seconds(src_lat, src_lon, lat_s, lon_s, depth_fn, n_samples=n_samples, h_min=h_min, shore_trim=shore_trim)
+        Ti = travel_time_seconds(src_lat, src_lon, lat_s, lon_s, depth_fn, n_samples=n_samples, h_min=h_min)
         T[i] = np.nan if not np.isfinite(Ti) else float(Ti)
     return T
 
@@ -83,7 +83,7 @@ def plot_obs_vs_model(t_obs_s,
                       depth_fn,
                       station_names=None,
                       robust=True,
-                      n_samples=800, h_min=50.0, shore_trim=10,
+                      n_samples=800, h_min=0.0,
                       show_free_fit=True,
                       figpath="outputs/obs_vs_model.png",
                       title="Observed vs. Modelled arrival times",
@@ -111,7 +111,7 @@ def plot_obs_vs_model(t_obs_s,
     """
     # 1) Modèle
     T_model = compute_modeled_times(stations, src_lat, src_lon, depth_fn,
-                                    n_samples=n_samples, h_min=h_min, shore_trim=shore_trim)
+                                    n_samples=n_samples, h_min=h_min)
 
     # 2) Ajustements
     t0_fixed, valid_mask = fit_t0_fixed_slope1(t_obs_s, T_model, robust=robust)
@@ -136,7 +136,7 @@ def plot_obs_vs_model(t_obs_s,
     if np.any(m):
         xgrid = np.linspace(np.nanmin(x[m]), np.nanmax(x[m]), 200)
         ax.plot(xgrid, t0_fixed + xgrid, color="tab:red", lw=2.0,
-                label=r"Fit (slope=1):  $t_0^{*}$ = {t0_fixed:,.0f} s")
+                label=rf"Fit (slope=1):  $t_0^{{*}}$ = {t0_fixed:,.0f} s")
 
         if show_free_fit and (y_pred_free is not None):
             ax.plot(xgrid, a_free + b_free * xgrid, color="0.25", lw=1.6, ls="--",

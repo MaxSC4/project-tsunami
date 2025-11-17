@@ -14,12 +14,18 @@ import datetime
 
 from tsunami.io_etopo import load_etopo5, make_depth_function
 from tsunami.observations import load_arrival_times
-from tsunami.inverse import triangulation_inversion
 from tsunami.speed_integrator import travel_time_seconds
+
+from tsunami.inverse import triangulation_inversion
+from tsunami.absolute_inversion import absolute_inversion
 
 from plotting.world_map import plot_world_map
 from plotting.diagnostics import plot_obs_vs_model
-from plotting.uncertainty import estimate_spatial_uncertainty
+from plotting.uncertainty import (
+    estimate_spatial_uncertainty,
+    compute_misfit_profiles,
+    plot_misfit_profiles
+)
 from plotting.table_arrival_times import build_residual_table, print_latex_table
 
 
@@ -33,16 +39,23 @@ def _ensure_dir(path):
     if d:
         os.makedirs(d, exist_ok=True)
 
+
 def _to_station_list(df):
     """
     Convertit le DataFrame d'observations en liste de stations
     sous la forme [{"name","lat","lon"}, ...] pour l'affichage.
     S'adapte aux noms de colonnes usuels du projet.
     """
-    # On essaie d'être souple sur les noms de colonnes
-    name_col = "Ville/Port" if "Ville/Port" in df.columns else ("name" if "name" in df.columns else None)
-    lat_col  = "Latitude_N" if "Latitude_N" in df.columns else ("lat" if "lat" in df.columns else None)
-    lon_col  = "Longitude_E" if "Longitude_E" in df.columns else ("lon" if "lon" in df.columns else None)
+    name_col = "Ville/Port" if "Ville/Port" in df.columns else (
+        "name" if "name" in df.columns else None
+    )
+    lat_col = "Latitude_N" if "Latitude_N" in df.columns else (
+        "lat" if "lat" in df.columns else None
+    )
+    lon_col = "Longitude_E" if "Longitude_E" in df.columns else (
+        "lon" if "lon" in df.columns else None
+    )
+
     if not (name_col and lat_col and lon_col):
         raise ValueError("Colonnes attendues non trouvées (Ville/Port, Latitude_N, Longitude_E).")
 
@@ -55,13 +68,15 @@ def _to_station_list(df):
         })
     return recs
 
+
 def _stations_array(df):
     """
     Retourne un tableau (Ns,2) [lat, lon] pour l'inversion.
     """
-    lat_col  = "Latitude_N" if "Latitude_N" in df.columns else "lat"
-    lon_col  = "Longitude_E" if "Longitude_E" in df.columns else "lon"
+    lat_col = "Latitude_N" if "Latitude_N" in df.columns else "lat"
+    lon_col = "Longitude_E" if "Longitude_E" in df.columns else "lon"
     return df[[lat_col, lon_col]].to_numpy(dtype=float)
+
 
 def _auto_search_box(stations, margin_deg=10.0):
     """
@@ -72,12 +87,11 @@ def _auto_search_box(stations, margin_deg=10.0):
     lons = stations[:, 1]
     lat_min, lat_max = float(np.min(lats)), float(np.max(lats))
     lon_min, lon_max = float(np.min(lons)), float(np.max(lons))
-    # marge et clamps simples
+
     lat_min = max(-90.0, lat_min - margin_deg)
-    lat_max = min( 90.0, lat_max + margin_deg)
+    lat_max = min(90.0,  lat_max + margin_deg)
     lon_min = lon_min - margin_deg
     lon_max = lon_max + margin_deg
-    # normalisation longitudes simple (pas besoin d'être parfait ici)
     return lat_min, lat_max, lon_min, lon_max
 
 
@@ -95,9 +109,10 @@ def run_pipeline(
     max_iter=6,                     # itérations max de raffinement
     robust=True,                    # inversion robuste (médiane, clipping outliers)
     make_map=True,                  # tracer la carte finale
-    save_map_path="outputs/world_map_inversion.png",
+    save_map_path="outputs/test/world_map_inversion.png",
     make_diagnostics=False,
-    diag_path="outpus/obs_vs_model.png"
+    diag_path="outputs/test/obs_vs_model.png",
+    use_absolute=True,              # True = absolute_inversion, False = triangulation_inversion
 ):
     """
     Exécute le pipeline d'inversion et (optionnellement) produit une carte.
@@ -110,11 +125,11 @@ def run_pipeline(
 
     # --- 2) Observations ---
     print("→ Loading stations & observed arrival times...")
-    df, t_obs_s = load_arrival_times(stations_csv)   # df contient les colonnes du CSV + temps
+    df, t_obs_s = load_arrival_times(stations_csv)
     stations = _stations_array(df)
     station_list = _to_station_list(df)
-
-    print(f"   → {len(stations)} stations loaded.")
+    Ns = len(stations)
+    print(f"   → {Ns} stations loaded.")
 
     # --- 3) Boîte de recherche ---
     if search_box is None:
@@ -124,21 +139,54 @@ def run_pipeline(
         lat_min, lat_max, lon_min, lon_max = map(float, search_box)
         print(f"→ User search box: {lat_min:.1f}–{lat_max:.1f}°N / {lon_min:.1f}–{lon_max:.1f}°E")
 
+    # --- 3bis) Trouver l’index de la station de référence (Los Angeles) ---
+    name_col = "Ville/Port" if "Ville/Port" in df.columns else "name"
+    names_raw = df[name_col].astype(str)
+
+    ref_index = 0
+    try:
+        ref_index = names_raw.tolist().index("Los_Angeles")
+    except ValueError:
+        try:
+            ref_index = names_raw.str.replace("_", " ").tolist().index("Los Angeles")
+        except ValueError:
+            print("[run_pipeline] Warning: 'Los_Angeles' non trouvée, station[0] utilisée comme référence.")
+            ref_index = 0
+
     # --- 4) Inversion ---
     print("→ Running inversion...")
-    best_lat, best_lon, t0, stats = triangulation_inversion(
-        stations=stations,
-        t_obs_s=t_obs_s,
-        depth_fn=depth_fn,
-        phi_min=lat_min, phi_max=lat_max,
-        lam_min=lon_min, lam_max=lon_max,
-        n=grid_n,
-        precision_deg=precision_deg,
-        max_iter=max_iter,
-        min_valid_stations=3,
-        robust=robust,
-        verbose=True
-    )
+
+    if use_absolute:
+        # nouvelle inversion “centrée Los Angeles”
+        best_lat, best_lon, t0_hat, stats = absolute_inversion(
+            stations=stations,
+            t_obs_s=t_obs_s,
+            depth_fn=depth_fn,
+            phi_min=lat_min, phi_max=lat_max,
+            lam_min=lon_min, lam_max=lon_max,
+            ref_index=ref_index,
+            n=grid_n,
+            precision_deg=precision_deg,
+            max_iter=max_iter,
+            min_valid_stations=3,
+            robust=robust,
+            verbose=True,
+        )
+    else:
+        # ancienne inversion triangulation (pour comparaison)
+        best_lat, best_lon, t0_hat, stats = triangulation_inversion(
+            stations=stations,
+            t_obs_s=t_obs_s,
+            depth_fn=depth_fn,
+            phi_min=lat_min, phi_max=lat_max,
+            lam_min=lon_min, lam_max=lon_max,
+            n=grid_n,
+            precision_deg=precision_deg,
+            max_iter=max_iter,
+            min_valid_stations=3,
+            robust=robust,
+            verbose=True,
+        )
 
     print("\n=== Inversion result ===")
     print(f"Source latitude   : {best_lat:.3f}°")
@@ -146,15 +194,20 @@ def run_pipeline(
 
     # Conversion du temps POSIX (secondes) en date UTC
     try:
-        t0_datetime = datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc)
+        t0_datetime = datetime.datetime.fromtimestamp(t0_hat, tz=datetime.timezone.utc)
         t0_str = t0_datetime.strftime("%Y-%m-%d %H:%M:%S %Z")
-        print(f"Estimated t0*     : {t0:.1f} s (POSIX time)")
+        print(f"Estimated t0*     : {t0_hat:.1f} s (POSIX time)")
         print(f"                   → {t0_str}")
     except (OSError, OverflowError, ValueError):
-        print(f"Estimated t0*     : {t0:.1f} s (not a valid POSIX timestamp)")
+        print(f"Estimated t0*     : {t0_hat:.1f} s (not a valid POSIX timestamp)")
 
-    print(f"RMS misfit        : {stats['misfit']:.2f} s")
-    print(f"Valid stations    : {stats.get('valid', 'n/a')}")
+    # Diagnostic misfit
+    if "rmse_rel" in stats:
+        print(f"RMS misfit (relative) : {stats['rmse_rel']:.2f} s")
+    if "rmse_abs" in stats:
+        print(f"RMS misfit (absolute) : {stats['rmse_abs']:.2f} s")
+    if "valid" in stats:
+        print(f"Valid stations        : {stats['valid']} / {Ns}")
 
     # --- 4bis) Estimation de l'incertitude spatiale ---
     print("→ Estimating spatial uncertainty around source...")
@@ -166,10 +219,9 @@ def run_pipeline(
         span_lat_deg=4.0,
         span_lon_deg=6.0,
         step_deg=0.25,
-        rel_increase=0.15,      # +15% sur le RMSE
-        n_samples=800,
-        h_min=50.0,
-        shore_trim=10,
+        rel_increase=0.10,
+        n_samples=2000,
+        h_min=0.0,
         robust=True,
     )
 
@@ -180,6 +232,30 @@ def run_pipeline(
     print(f"Lat uncertainty   : Δφ ≈ {dlat_deg:.2f}°")
     print(f"Lon uncertainty   : Δλ ≈ {dlon_deg:.2f}°")
     print(f"Spatial radius    : ≈ {radius_km:.0f} km (effective)")
+    print(f"Local RMSE min ≈ {unc['rmse_min']:.1f} s")
+
+    print("→ Computing 1D misfit profiles (lat/lon)...")
+    profiles = compute_misfit_profiles(
+        best_lat, best_lon,
+        stations=stations,
+        t_obs_s=t_obs_s,
+        depth_fn=depth_fn,
+        span_lat_deg=4.0,
+        span_lon_deg=6.0,
+        step_deg=0.25,
+        rel_increase=0.10,
+        n_samples=2000,
+        h_min=0.0,
+        robust=True,
+    )
+
+    plot_misfit_profiles(
+        best_lat, best_lon,
+        profiles,
+        title="1D RMS misfit profiles around estimated source",
+        savepath="outputs/test/misfit_profiles.png",
+        show=True,
+    )
 
     # --- 5) Carte ---
     if make_map:
@@ -195,81 +271,76 @@ def run_pipeline(
 
         plot_world_map(
             etopo_path=etopo_path,
-            stations=station_list,
+            stations=station_list,   # liste de dicts "name/lat/lon"
             source=source,
             lon_mode=lon_mode,
             title="ETOPO — Stations & great-circle paths",
             savepath=save_map_path,
-            show=True
+            show=True,
         )
 
+    # --- 6) Figure diag t_obs vs T_mod (facultative) ---
     if make_diagnostics:
-        name_col = "Ville/Port" if "Ville/Port" in df.columns else ("name" if "name" in df.columns else None)
-        station_names = list(df[name_col].astype(str).str.replace("_", " ")) if name_col else None
-
+        station_names = list(names_raw.str.replace("_", " "))
         print("→ Making diagnostics figure (observed vs modelled)...")
         _ = plot_obs_vs_model(
             t_obs_s=t_obs_s,
-            stations=stations,                # (Ns,2) lat,lon
+            stations=stations,
             src_lat=best_lat, src_lon=best_lon,
             depth_fn=depth_fn,
             station_names=station_names,
             robust=True,
-            n_samples=800, h_min=50.0, shore_trim=10,
+            n_samples=2000, h_min=0.0,
             show_free_fit=True,
             figpath=diag_path,
             title="Observed vs modelled arrival times",
-            show=True
+            show=True,
         )
 
-    # --- 6) Construire le tableau stations, temps obs/mod, temps ---
-    # Calcul des temps modélisés pour chaque station :
-    T_model = []
-    for lat_s, lon_s in stations:
-        T_model.append(
-            travel_time_seconds(best_lat, best_lon, lat_s, lon_s, depth_fn)
-        )
-    T_model = np.array(T_model)
+    # --- 7) Tableau LaTeX des temps obs/mod + résidus ---
+    if "T_model" in stats and stats["T_model"] is not None:
+        T_model = np.asarray(stats["T_model"], float)
+    else:
+        T_model = []
+        for lat_s, lon_s in stations:
+            T_model.append(
+                travel_time_seconds(best_lat, best_lon, lat_s, lon_s, depth_fn)
+            )
+        T_model = np.array(T_model)
 
-    # Ajouter la colonne t_obs_s si absente
     df["t_obs_s"] = t_obs_s
-
-    # Construire le tableau
-    table = build_residual_table(df, T_model, output_csv="outputs/residuals_table.csv")
-
-    # Afficher le tableau LaTeX pour ton rapport
+    table = build_residual_table(df, T_model, output_csv="outputs/test/residuals_table.csv")
     print_latex_table(table)
 
     # Résultats pour réutilisation
     return {
         "lat": best_lat,
         "lon": best_lon,
-        "t0": t0,
-        "misfit": stats["misfit"],
-        "stats": stats
+        "t0": t0_hat,
+        "misfit": stats.get("rmse_abs", np.nan),
+        "stats": stats,
     }
 
 
 # --------------------------------------------------------------
-# 3) Exécutable direct avec paramètres par défaut
+# 3) Exécutable direct
 # --------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Exemple : zone initiale au large du Japon
-    # search_box=None pour auto-détection autour des stations
     results = run_pipeline(
         etopo_path="data/etopo5.grd",
         stations_csv="data/data_villes.csv",
         lon_mode="360",
-        search_box=(-60.0, 60.0, 100.0, 290.0),  # (lat_min, lat_max, lon_min, lon_max) ou None
+        search_box=(-60.0, 60.0, 100.0, 290.0),
         grid_n=15,
         precision_deg=0.2,
         max_iter=6,
         robust=True,
         make_map=True,
-        save_map_path="outputs/world_map_inversion.png",
+        save_map_path="outputs/test/world_map_inversion.png",
         make_diagnostics=True,
-        diag_path="outputs/obs_vs_model.png"
+        diag_path="outputs/test/obs_vs_model.png",
+        use_absolute=True,
     )
 
     print("\nDone.")

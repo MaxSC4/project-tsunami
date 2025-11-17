@@ -3,13 +3,15 @@
 # à partir de la variation du RMSE des temps d'arrivée.
 # ------------------------------------------------------------
 import numpy as np
+import matplotlib.pyplot as plt
+import os
 
 from tsunami.speed_integrator import travel_time_seconds
 from tsunami.geo import arc_length_m
 
 def _candidate_rmse(src_lat, src_lon, stations, t_obs_s,
                     depth_fn,
-                    n_samples=800, h_min=50.0, shore_trim=10,
+                    n_samples=800, h_min=0.0,
                     robust=True):
     """
     Calcule le RMSE des temps d'arrivée pour une source candidate.
@@ -32,8 +34,7 @@ def _candidate_rmse(src_lat, src_lon, stations, t_obs_s,
             lat_s, lon_s,
             depth_fn,
             n_samples=n_samples,
-            h_min=h_min,
-            shore_trim=shore_trim,
+            h_min=h_min
         )
         T[i] = np.nan if not np.isfinite(Ti) else float(Ti)
 
@@ -64,10 +65,9 @@ def estimate_spatial_uncertainty(
     span_lat_deg=4.0,
     span_lon_deg=6.0,
     step_deg=0.25,
-    rel_increase=0.15,
+    rel_increase=0.10,
     n_samples=800,
-    h_min=50.0,
-    shore_trim=10,
+    h_min=0.0,
     robust=True,
 ):
     """
@@ -96,7 +96,6 @@ def estimate_spatial_uncertainty(
         depth_fn,
         n_samples=n_samples,
         h_min=h_min,
-        shore_trim=shore_trim,
         robust=robust,
     )
 
@@ -121,7 +120,6 @@ def estimate_spatial_uncertainty(
             depth_fn,
             n_samples=n_samples,
             h_min=h_min,
-            shore_trim=shore_trim,
             robust=robust,
         )
         rmse_lat.append(r_i)
@@ -158,7 +156,6 @@ def estimate_spatial_uncertainty(
             depth_fn,
             n_samples=n_samples,
             h_min=h_min,
-            shore_trim=shore_trim,
             robust=robust,
         )
         rmse_lon.append(r_i)
@@ -181,7 +178,7 @@ def estimate_spatial_uncertainty(
 
     # --- rayon effectif en km ---
     # on prend deux directions principales : nord et est
-    # (approximation isotrope de l'incertitude)
+    # (approximation de l'incertitude)
     lat_north = best_lat + dlat_deg
     lon_east = best_lon + dlon_deg
 
@@ -196,3 +193,220 @@ def estimate_spatial_uncertainty(
         "radius_km": float(radius_km),
         "rmse_min": float(rmse_min),
     }
+
+
+# ------------------------------------------------------------
+# Profils 1D de misfit (RMSE) autour de la source
+# ------------------------------------------------------------
+
+def compute_misfit_profiles(
+    best_lat, best_lon,
+    stations, t_obs_s,
+    depth_fn,
+    span_lat_deg=4.0,
+    span_lon_deg=6.0,
+    step_deg=0.25,
+    rel_increase=0.10,
+    n_samples=800,
+    h_min=0.0,
+    robust=True,
+):
+    """
+    Calcule les profils 1D de RMSE autour de la source :
+
+        - RMSE(φ) pour φ dans [best_lat ± span_lat_deg], λ = best_lon
+        - RMSE(λ) pour λ dans [best_lon ± span_lon_deg], φ = best_lat
+
+    On utilise exactement le même RMSE que _candidate_rmse, avec ajustement
+    de t0* pour chaque candidat.
+
+    Retourne un dict avec tout ce qu'il faut pour tracer :
+
+        {
+            "lat_axis": latitudes testées,
+            "rmse_lat": RMSE(φ),
+            "lon_axis": longitudes testées,
+            "rmse_lon": RMSE(λ),
+            "rmse_min": RMSE au point (best_lat, best_lon),
+            "threshold": RMSE_min * (1 + rel_increase),
+            "dlat_deg": Δφ estimé,
+            "dlon_deg": Δλ estimé,
+        }
+    """
+    stations = np.asarray(stations, float)
+    t_obs_s = np.asarray(t_obs_s, float)
+
+    # --- RMSE au minimum (point donné par l'inversion) ---
+    rmse_min, t0_best, mask_best = _candidate_rmse(
+        best_lat, best_lon,
+        stations, t_obs_s,
+        depth_fn,
+        n_samples=n_samples,
+        h_min=h_min,
+        robust=robust,
+    )
+
+    if not np.isfinite(rmse_min):
+        raise RuntimeError("compute_misfit_profiles: rmse_min n'est pas fini (source invalide ?).")
+
+    threshold = rmse_min * (1.0 + rel_increase)
+
+    # --- Profil en latitude (lon fixée) ---
+    lats = np.arange(
+        best_lat - span_lat_deg,
+        best_lat + span_lat_deg + 1e-6,
+        step_deg,
+        dtype=float,
+    )
+
+    rmse_lat = []
+    for lat in lats:
+        r_i, _, _ = _candidate_rmse(
+            lat, best_lon,
+            stations, t_obs_s,
+            depth_fn,
+            n_samples=n_samples,
+            h_min=h_min,
+            robust=robust,
+        )
+        rmse_lat.append(r_i)
+    rmse_lat = np.asarray(rmse_lat)
+
+    # Recherche des points où RMSE dépasse le seuil (comme estimate_spatial_uncertainty)
+    dlat_up = span_lat_deg
+    dlat_down = span_lat_deg
+
+    # Vers le nord
+    for lat, r in zip(lats[lats >= best_lat], rmse_lat[lats >= best_lat]):
+        if np.isfinite(r) and r > threshold:
+            dlat_up = lat - best_lat
+            break
+    # Vers le sud
+    for lat, r in zip(lats[lats <= best_lat][::-1], rmse_lat[lats <= best_lat][::-1]):
+        if np.isfinite(r) and r > threshold:
+            dlat_down = best_lat - lat
+            break
+
+    dlat_deg = 0.5 * (dlat_up + dlat_down)
+
+    # --- Profil en longitude (lat fixée) ---
+    lons = np.arange(
+        best_lon - span_lon_deg,
+        best_lon + span_lon_deg + 1e-6,
+        step_deg,
+        dtype=float,
+    )
+
+    rmse_lon = []
+    for lon in lons:
+        r_i, _, _ = _candidate_rmse(
+            best_lat, lon,
+            stations, t_obs_s,
+            depth_fn,
+            n_samples=n_samples,
+            h_min=h_min,
+            robust=robust,
+        )
+        rmse_lon.append(r_i)
+    rmse_lon = np.asarray(rmse_lon)
+
+    dlon_east = span_lon_deg
+    dlon_west = span_lon_deg
+
+    # Vers l'est
+    for lon, r in zip(lons[lons >= best_lon], rmse_lon[lons >= best_lon]):
+        if np.isfinite(r) and r > threshold:
+            dlon_east = lon - best_lon
+            break
+    # Vers l'ouest
+    for lon, r in zip(lons[lons <= best_lon][::-1], rmse_lon[lons <= best_lon][::-1]):
+        if np.isfinite(r) and r > threshold:
+            dlon_west = best_lon - lon
+            break
+
+    dlon_deg = 0.5 * (dlon_east + dlon_west)
+
+    return {
+        "lat_axis": lats,
+        "rmse_lat": rmse_lat,
+        "lon_axis": lons,
+        "rmse_lon": rmse_lon,
+        "rmse_min": float(rmse_min),
+        "threshold": float(threshold),
+        "dlat_deg": float(dlat_deg),
+        "dlon_deg": float(dlon_deg),
+    }
+
+
+def plot_misfit_profiles(
+    best_lat, best_lon,
+    profiles,
+    title="Local RMS misfit profiles around source",
+    savepath=None,
+    show=True,
+):
+    """
+    Trace deux courbes 1D :
+
+        - RMSE(φ) vs φ (longitude fixée à best_lon)
+        - RMSE(λ) vs λ (latitude fixée à best_lat)
+
+    avec :
+        - le minimum RMSE_min marqué,
+        - une ligne horizontale au seuil threshold = (1+rel) RMSE_min,
+        - des lignes verticales aux limites best ± Δφ, best ± Δλ.
+    """
+    lat_axis = profiles["lat_axis"]
+    rmse_lat = profiles["rmse_lat"]
+    lon_axis = profiles["lon_axis"]
+    rmse_lon = profiles["rmse_lon"]
+    rmse_min = profiles["rmse_min"]
+    threshold = profiles["threshold"]
+    dlat_deg = profiles["dlat_deg"]
+    dlon_deg = profiles["dlon_deg"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=120, sharey=True)
+    ax_lat, ax_lon = axes
+
+    # --- Profil latitude ---
+    ax_lat.plot(lat_axis, rmse_lat, "-o", ms=3, label="RMSE(φ)")
+    ax_lat.axvline(best_lat, color="k", linestyle="--", lw=1.5, label="Best φ*")
+    ax_lat.axhline(rmse_min, color="tab:green", lw=1.5, label="RMSE min")
+    ax_lat.axhline(threshold, color="tab:red", lw=1.2, linestyle=":", label="Seuil (1+δ)·RMSE min")
+
+    # Lignes verticales pour les Δφ
+    ax_lat.axvline(best_lat - dlat_deg, color="tab:red", linestyle="--", lw=1)
+    ax_lat.axvline(best_lat + dlat_deg, color="tab:red", linestyle="--", lw=1)
+
+    ax_lat.set_xlabel("Latitude (°N)")
+    ax_lat.set_ylabel("RMS misfit (s)")
+    ax_lat.set_title("Profil latitudinal (λ = {:.2f}°E)".format(best_lon))
+    ax_lat.grid(True, linestyle=":", alpha=0.5)
+
+    # --- Profil longitude ---
+    ax_lon.plot(lon_axis, rmse_lon, "-o", ms=3, label="RMSE(λ)")
+    ax_lon.axvline(best_lon, color="k", linestyle="--", lw=1.5, label="Best λ*")
+    ax_lon.axhline(rmse_min, color="tab:green", lw=1.5, label="RMSE min")
+    ax_lon.axhline(threshold, color="tab:red", lw=1.2, linestyle=":", label="Seuil (1+δ)·RMSE min")
+
+    # Lignes verticales pour les Δλ
+    ax_lon.axvline(best_lon - dlon_deg, color="tab:red", linestyle="--", lw=1)
+    ax_lon.axvline(best_lon + dlon_deg, color="tab:red", linestyle="--", lw=1)
+
+    ax_lon.set_xlabel("Longitude (°E)")
+    ax_lon.set_title("Profil longitudinal (φ = {:.2f}°N)".format(best_lat))
+    ax_lon.grid(True, linestyle=":", alpha=0.5)
+
+    # Légende commune (on prend celle du 2e axe)
+    ax_lon.legend(loc="upper right", frameon=True)
+
+    fig.suptitle(title, fontsize=14)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    if savepath:
+        os.makedirs(os.path.dirname(savepath), exist_ok=True)
+        fig.savefig(savepath, bbox_inches="tight", dpi=150)
+    if show:
+        plt.show()
+
+    return fig, axes
