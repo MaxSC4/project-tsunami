@@ -45,12 +45,12 @@ Longitude wrapping, interpolation, and missing-value management are handled inte
 ---
 
 ### 2. Great-circle geometry
-Propagation paths are assumed to follow **geodesics** on a spherical Earth.  
+Propagation paths are assumed to follow **geodesics** on a spherical Earth.
 The module `geo.py` provides:
 
-- great-circle coordinates,  
-- arc length computations,  
-- spherical trigonometric tools.  
+- great-circle coordinates,
+- arc length computations,
+- spherical trigonometric tools.
 
 This ensures physically realistic first-order propagation directions.
 
@@ -62,8 +62,8 @@ $$
 v(h) = \sqrt{g\,h}
 $$
 where:
-- **\(h\)** = local depth,
-- **\(g = 9.81\ \text{m/s}^2\)**.
+- **$h$** = local depth,
+- **$g = 9.81\ \text{m/s}^2$**.
 
 This neglects dispersion and refraction, but remains valid for long-wavelength tsunamis propagating across the open ocean.
 
@@ -89,7 +89,7 @@ Vectorization ensures efficient computation for all stations.
 The inversion estimates:
 - **source latitude**
 - **source longitude**
-- **origin time** \(t_0^*\)
+- **origin time** $t_0^*$
 
 by minimizing the physically meaningful RMS misfit:
 $$
@@ -100,7 +100,7 @@ $$
 $$
 Key features:
 - **adaptive grid search** with progressive refinement,
-- **robust estimation** of \(t_0^*\) using the median of residuals,
+- **robust estimation** of $t_0^*$ using the median of residuals,
 - **no free-scale regression** (the slope is physically fixed to 1),
 - **outlier clipping** available.
 

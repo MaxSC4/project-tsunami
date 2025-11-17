@@ -168,7 +168,7 @@ def run_pipeline(
             n=grid_n,
             precision_deg=precision_deg,
             max_iter=max_iter,
-            min_valid_stations=3,
+            min_valid_stations=11,
             robust=robust,
             verbose=True,
         )
@@ -183,7 +183,7 @@ def run_pipeline(
             n=grid_n,
             precision_deg=precision_deg,
             max_iter=max_iter,
-            min_valid_stations=3,
+            min_valid_stations=11,
             robust=robust,
             verbose=True,
         )
