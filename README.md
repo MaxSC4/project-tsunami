@@ -1,8 +1,8 @@
 # 🌊 **Project Tsunami — Source Inversion & Travel-Time Modelling**
 
 ### M1 Geology — *Institut de Physique du Globe de Paris (IPGP)*
-**Course:** *Data Analysis in Geosciences*  
-**Supervision:** *E. Gayer, C. Narteau, F. Beauducel*  
+**Course:** *Data Analysis in Geosciences*
+**Supervision:** *E. Gayer, C. Narteau, F. Beauducel*
 
 **Authors:** [**Maxime Soares Correia**](https://maxsc4.github.io/) & **Matthieu Courcelles**
 
@@ -229,19 +229,19 @@ project-tsunami/
 - [**Maxime Soares Correia**](https://maxsc4.github.io/)
 - **Matthieu Courcelles**
 
-Supervised by **Eric Gayer**, **Clément Narteau**, and **François Beauducel**  
+Supervised by **Eric Gayer**, **Clément Narteau**, and **François Beauducel**
 as part of the *Data Analysis in Geosciences* course — M1 Geology, IPGP (2025).
 
 ---
 
 ## 🪶 License
 
-This project is provided for **academic and educational use**.  
+This project is provided for **academic and educational use**.
 Reuse is permitted with appropriate citation of the authors and the IPGP course.
 
 ---
 
 ## 💡 Acknowledgments
 
-We thank the **Institut de Physique du Globe de Paris (IPGP)**  
+We thank the **Institut de Physique du Globe de Paris (IPGP)**
 for providing datasets, computational tools, and pedagogical guidance.

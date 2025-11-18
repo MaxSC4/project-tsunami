@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap, Normalize
 from matplotlib.ticker import FuncFormatter
+from matplotlib.lines import Line2D
 
 from tsunami.io_etopo import load_etopo5
 from tsunami.geo import great_circle_points
@@ -123,8 +124,23 @@ def _plot_source(ax, lat, lon, lon_mode="180", label="Source", radius_km=None, s
         lon_c = _wrap180(lon_c) if lon_mode == "180" else _wrap360(lon_c)
         ax.plot(lon_c, lat_c, color=st.get("c", "gold"), alpha=0.7, lw=1.2, zorder=zorder-1)
 
-def _plot_stations(ax, stations, lon_mode="180", with_labels=True):
-    """Place les stations, et affiche leurs noms si demandé."""
+def _plot_stations(
+    ax,
+    stations,
+    lon_mode="180",
+    with_labels=True,
+    travel_times_s=None,      # optionnel : temps de trajet depuis la source (s)
+    cmap="plasma",
+    vmin=None,
+    vmax=None,
+):
+    """
+    Place les stations et, si travel_times_s est fourni, les colore
+    en fonction du temps de trajet (en heures).
+
+    - Si travel_times_s est None : points orange simples.
+    - Sinon : scatter coloré + labels 'Name (T_mod en heures)'.
+    """
     xs = []
     ys = []
     names = []
@@ -134,11 +150,74 @@ def _plot_stations(ax, stations, lon_mode="180", with_labels=True):
         xs.append(_wrap180(s["lon"]) if lon_mode == "180" else _wrap360(s["lon"]))
     xs = np.asarray(xs, float)
     ys = np.asarray(ys, float)
-    ax.scatter(xs, ys, s=36, c="k", edgecolors="white", linewidths=0.8, zorder=5, label="Stations")
+
+    # Cas 1 : pas de temps de trajet -> points orange simples
+    if travel_times_s is None:
+        sc = ax.scatter(
+            xs, ys,
+            s=36,
+            c="orange",
+            edgecolors="white",
+            linewidths=0.8,
+            zorder=5,
+            label="Stations"
+        )
+        if with_labels:
+            for name, x, y in zip(names, xs, ys):
+                if name:
+                    ax.text(x + 1.2, y + 0.8, name, fontsize=8, color="k", zorder=6)
+        return sc
+
+    # Cas 2 : couleurs = temps de trajet modélisé (en heures)
+    travel_times_s = np.asarray(travel_times_s, float)
+    times_h = travel_times_s / 3600.0  # on travaille en heures pour la colorbar
+
+    # bornes de la colorbar (en heures), ignore les NaN
+    finite = np.isfinite(times_h)
+    if not np.any(finite):
+        # fallback : aucun temps valide → on repasse en mode simple
+        sc = ax.scatter(
+            xs, ys,
+            s=36,
+            c="orange",
+            edgecolors="white",
+            linewidths=0.8,
+            zorder=5,
+            label="Stations"
+        )
+        return sc
+
+    if vmin is None:
+        vmin = float(np.nanmin(times_h[finite]))
+    if vmax is None:
+        vmax = float(np.nanmax(times_h[finite]))
+
+    # scatter coloré
+    sc = ax.scatter(
+        xs, ys,
+        s=40,
+        c=times_h,
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        edgecolors="black",
+        linewidths=0.8,
+        zorder=5,
+        label="Stations (coloured by travel time)"
+    )
+
+    # Labels "Nom (T_mod en heures)"
     if with_labels:
-        for name, x, y in zip(names, xs, ys):
-            if name:
-                ax.text(x + 1.2, y + 0.8, name, fontsize=8, color="k", zorder=6)
+        for name, x, y, t_h in zip(names, xs, ys, times_h):
+            if not name:
+                continue
+            if np.isfinite(t_h):
+                label = f"{name} ({t_h:.1f} h)"
+            else:
+                label = f"{name} (n/a)"
+            ax.text(x + 1.0, y + 0.8, label, fontsize=7.5, color="k", zorder=6)
+
+    return sc
 
 
 # ---------------------------------------------------------------------
@@ -157,7 +236,8 @@ def plot_world_map(
     show_colorbar=True,
     path_style=None,              # style par défaut des traits de grands cercles
     savepath=None,                # si non None → sauvegarde
-    show=True                     # si True → plt.show()
+    show=True,                     # si True → plt.show()
+    station_travel_times_s=None
 ):
     """
     Trace une carte globale simple et renvoie (fig, ax).
@@ -246,8 +326,31 @@ def plot_world_map(
     elif isinstance(stations, (list, tuple)):
         station_list = list(stations)
 
+    station_scatter = None
     if station_list:
-        _plot_stations(ax, station_list, lon_mode=lon_mode, with_labels=True)
+        station_scatter = _plot_stations(
+            ax,
+            station_list,
+            lon_mode=lon_mode,
+            with_labels=True,
+            travel_times_s=station_travel_times_s,
+            cmap="plasma",   # palette pour les temps de trajet
+        )
+
+    # Colorbar pour les temps de trajet (si on a une colormap de stations)
+    if station_scatter is not None and station_travel_times_s is not None:
+        # on a mis les temps en heures dans _plot_stations
+        cb_time = fig.colorbar(
+            station_scatter,
+            ax=ax,
+            pad=0.10,
+            fraction=0.03,
+            location="bottom",
+            orientation="horizontal",
+        )
+        cb_time.set_label("Model travel time from estimated source (hours)", fontsize=9)
+        cb_time.ax.tick_params(labelsize=8)
+
 
     # 6) Source + trajets vers les stations
     if source and ("lat" in source) and ("lon" in source):
@@ -275,8 +378,51 @@ def plot_world_map(
                     line_kwargs=default_style
                 )
 
-        if station_list:
-            ax.legend(loc="lower left", frameon=True)
+    # --- Légende : étoile / trajets / stations ---
+    legend_elements = []
+
+    # Étoile jaune = source estimée
+    legend_elements.append(
+        Line2D(
+            [0], [0],
+            marker="*",
+            linestyle="None",
+            markerfacecolor="gold",
+            markeredgecolor="k",
+            markersize=14,
+            label="Estimated source",
+        )
+    )
+
+    # Ligne rouge = grand cercle (trajet)
+    legend_elements.append(
+        Line2D(
+            [0], [0],
+            color="crimson",
+            lw=2,
+            label="Great-circle paths",
+        )
+    )
+
+    # Point = station
+    legend_elements.append(
+        Line2D(
+            [0], [0],
+            marker="o",
+            linestyle="None",
+            markerfacecolor="lightgray",
+            markeredgecolor="k",
+            markersize=6,
+            label="Stations (coloured by travel time)",
+        )
+    )
+
+    ax.legend(
+        handles=legend_elements,
+        loc="lower left",
+        frameon=True,
+        fontsize=8,
+    )
 
     # 7) Sauvegarde / affichage
     fig.tight_layout()
@@ -294,6 +440,7 @@ def plot_world_map(
 # ---------------------------------------------------------------------
 if __name__ == "__main__":
     # Carte centrée “Greenwich” avec source + stations + trajets
+    """
     plot_world_map(
         etopo_path="data/etopo5.grd",
         stations="data/data_villes.csv",
@@ -308,9 +455,11 @@ if __name__ == "__main__":
     plot_world_map(
         etopo_path="data/etopo5.grd",
         stations="data/data_villes.csv",
-        source={"lat": 41.03, "lon": 162.87, "label": "Source", "radius_km": 200},
+        #source={"lat": 41.03, "lon": 162.87, "label": "Source", "radius_km": 200},
         lon_mode="360",
-        title="ETOPO — Pacific-centered",
+        title="ETOPO5 — Pacific-centered",
         savepath="outputs/world_map_pacific.png",
         show=True
     )
+    """
+

@@ -109,9 +109,9 @@ def run_pipeline(
     max_iter=6,                     # itérations max de raffinement
     robust=True,                    # inversion robuste (médiane, clipping outliers)
     make_map=True,                  # tracer la carte finale
-    save_map_path="outputs/test/world_map_inversion.png",
+    save_map_path="outputs/wo_bowen/world_map_inversion.png",
     make_diagnostics=False,
-    diag_path="outputs/test/obs_vs_model.png",
+    diag_path="outputs/wo_bowen/obs_vs_model.png",
     use_absolute=True,              # True = absolute_inversion, False = triangulation_inversion
 ):
     """
@@ -168,7 +168,7 @@ def run_pipeline(
             n=grid_n,
             precision_deg=precision_deg,
             max_iter=max_iter,
-            min_valid_stations=11,
+            min_valid_stations=10,
             robust=robust,
             verbose=True,
         )
@@ -183,7 +183,7 @@ def run_pipeline(
             n=grid_n,
             precision_deg=precision_deg,
             max_iter=max_iter,
-            min_valid_stations=11,
+            min_valid_stations=10,
             robust=robust,
             verbose=True,
         )
@@ -253,7 +253,7 @@ def run_pipeline(
         best_lat, best_lon,
         profiles,
         title="1D RMS misfit profiles around estimated source",
-        savepath="outputs/test/misfit_profiles.png",
+        savepath="outputs/wo_bowen/misfit_profiles.png",
         show=True,
     )
 
@@ -261,6 +261,20 @@ def run_pipeline(
     if make_map:
         print("→ Rendering world map...")
         _ensure_dir(save_map_path)
+
+        # Calcul des temps de trajet modélisés depuis la source optimale
+        T_model = []
+        for lat_s, lon_s in stations:
+            T_model.append(
+                travel_time_seconds(
+                    best_lat, best_lon,
+                    lat_s, lon_s,
+                    depth_fn,
+                    n_samples=2000,
+                    h_min=0.0,
+                )
+            )
+        T_model = np.array(T_model, float)
 
         source = {
             "lat": best_lat,
@@ -277,6 +291,7 @@ def run_pipeline(
             title="ETOPO — Stations & great-circle paths",
             savepath=save_map_path,
             show=True,
+            station_travel_times_s=T_model
         )
 
     # --- 6) Figure diag t_obs vs T_mod (facultative) ---
@@ -298,18 +313,8 @@ def run_pipeline(
         )
 
     # --- 7) Tableau LaTeX des temps obs/mod + résidus ---
-    if "T_model" in stats and stats["T_model"] is not None:
-        T_model = np.asarray(stats["T_model"], float)
-    else:
-        T_model = []
-        for lat_s, lon_s in stations:
-            T_model.append(
-                travel_time_seconds(best_lat, best_lon, lat_s, lon_s, depth_fn)
-            )
-        T_model = np.array(T_model)
-
     df["t_obs_s"] = t_obs_s
-    table = build_residual_table(df, T_model, output_csv="outputs/test/residuals_table.csv")
+    table = build_residual_table(df, T_model, output_csv="outputs/wo_bowen/residuals_table.csv")
     print_latex_table(table)
 
     # Résultats pour réutilisation
@@ -337,9 +342,9 @@ if __name__ == "__main__":
         max_iter=6,
         robust=True,
         make_map=True,
-        save_map_path="outputs/test/world_map_inversion.png",
+        save_map_path="outputs/new_plot/world_map_inversion.png",
         make_diagnostics=True,
-        diag_path="outputs/test/obs_vs_model.png",
+        diag_path="outputs/new_plot/obs_vs_model.png",
         use_absolute=True,
     )
 
