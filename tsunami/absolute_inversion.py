@@ -28,7 +28,9 @@ Interface :
     - 'residuals_rel' : résidus relatifs station par station,
     - 'T_model' : temps de trajet modélisés (s),
     - 'dt_obs' / 'dt_model' : temps relatifs observés / modélisés,
-    - 'ref_index' : index de la station utilisée comme référence.
+    - 'ref_index' : index de la station utilisée comme référence,
+    - 'history' : liste des misfits par itération,
+    - 'valid' : nombre de stations marines valides.
 """
 
 import numpy as np
@@ -53,51 +55,7 @@ def absolute_inversion(
     Inversion de la position de la source à partir de temps *relatifs*
     normalisés par une station de référence.
 
-    Paramètres
-    ----------
-    stations : array-like (Ns, 2)
-        Latitude et longitude de chaque station (en degrés).
-    t_obs_s : array-like (Ns,)
-        Temps d'arrivée observés en secondes (absolus quelconques).
-    depth_fn : callable
-        Fonction bathymétrique depth(lat, lon) -> profondeur (m, négative en mer).
-    phi_min, phi_max, lam_min, lam_max : float
-        Bornes de la boîte de recherche initiale (en degrés).
-    ref_index : int
-        Index de la station de référence (celle dont Δt_obs = 0).
-        Par exemple l'index de Los Angeles dans le tableau des stations.
-    n : int
-        Nombre de points de grille par axe à chaque itération.
-    precision_deg : float
-        On arrête le raffinement quand la boîte de recherche est plus petite
-        que cette valeur en latitude ET longitude.
-    max_iter : int
-        Nombre maximal d'itérations de raffinements successifs.
-    min_valid_stations : int
-        Misfit mis à +inf si moins de ce nombre de stations marines valides.
-    robust : bool
-        Si True, applique un clipping robuste sur les résidus (type Huber léger).
-    verbose : bool
-        Affiche un résumé à chaque itération.
-
-    Retour
-    ------
-    best_lat, best_lon : float
-        Position estimée de la source (°).
-    t0_hat : float
-        Estimation du temps d'origine t0* (en secondes) a posteriori.
-    stats : dict
-        Dictionnaire de diagnostics, contenant notamment :
-            - 'rmse_rel'      : RMSE sur les temps relatifs (s),
-            - 'rmse_abs'      : RMSE sur les temps absolus (s),
-            - 'residuals_rel' : (Ns,) résidus relatifs,
-            - 'residuals_abs' : (Ns,) résidus absolus,
-            - 'T_model'       : (Ns,) temps de trajet modélisés pour la
-                                meilleure source (s),
-            - 'dt_obs'        : (Ns,) temps relatifs observés,
-            - 'dt_model'      : (Ns,) temps relatifs modélisés,
-            - 'ref_index'     : index de la station de référence,
-            - 'valid'         : nombre de stations marines valides.
+    Voir docstring en tête de fichier pour les détails.
     """
     stations = np.asarray(stations, dtype=float)
     t_obs_s  = np.asarray(t_obs_s, dtype=float)
@@ -112,11 +70,19 @@ def absolute_inversion(
     # Δt_obs[i] = t_obs[i] - t_obs[ref]
     dt_obs = t_obs_s - t_obs_s[ref_index]
 
-    best = dict(lat=np.nan, lon=np.nan, misfit=np.inf)
+    # "best" ne contient que ce qui sert à la recherche spatiale
+    best = dict(lat=np.nan, lon=np.nan, rmse_rel=np.inf, valid=0)
     tries = 0
 
+    # Historique des itérations pour tracer RMSE vs iteration
+    history = []
+
     # --- boucle de raffinement de la grille ---
-    while (phi_max - phi_min) > precision_deg and (lam_max - lam_min) > precision_deg and tries < max_iter:
+    while (
+        (phi_max - phi_min) > precision_deg
+        and (lam_max - lam_min) > precision_deg
+        and tries < max_iter
+    ):
         # 1. Grille de candidats
         lats = np.linspace(phi_min, phi_max, n)
         lons = np.linspace(lam_min, lam_max, n)
@@ -142,7 +108,6 @@ def absolute_inversion(
 
         # 3. Misfit en temps relatifs par rapport à la station ref_index
         #   ΔT_model[p, i] = Tmod[p, i] - Tmod[p, ref_index]
-        #   ΔT_model[p, ref_index] = 0 par construction.
         # On ne garde que les stations i pour lesquelles les deux trajets (src->i, src->ref)
         # sont marins (Tmod finite).
         model_ok = np.isfinite(Tmod)
@@ -158,12 +123,10 @@ def absolute_inversion(
         resid = dt_obs_mat - dt_model
         resid[~valid] = np.nan
 
-        # Option robuste : clipping simple des outliers station par station
+        # Option robuste : clipping simple des outliers
         if robust:
-            # MAD (median absolute deviation) par candidat
-            mad = np.nanmedian(np.abs(resid), axis=1)
-            scale = np.maximum(mad, 1.0)  # évite division par zéro
-            # Normalisation + clipping à ±3σ, puis re-mise à l'échelle
+            mad = np.nanmedian(np.abs(resid), axis=1)     # (Np,)
+            scale = np.maximum(mad, 1.0)                  # évite division par 0
             resid = np.clip(resid / scale[:, None], -3.0, 3.0) * scale[:, None]
 
         # Misfit = RMS des résidus relatifs (en secondes)
@@ -174,21 +137,39 @@ def absolute_inversion(
         rmse = np.where(valid_counts >= min_valid_stations, rmse, np.inf)
 
         # 4. Sélection du meilleur candidat de cette grille
+        if not np.any(np.isfinite(rmse)):
+            if verbose:
+                print(f"[Iter {tries+1}] Aucun candidat valide (rmse=inf partout), arrêt.")
+            break
+
         idx_best = int(np.nanargmin(rmse))
         cand = dict(
             lat=float(grid_lat.flat[idx_best]),
             lon=float(grid_lon.flat[idx_best]),
-            misfit=float(rmse[idx_best]),
+            rmse_rel=float(rmse[idx_best]),
             valid=int(valid_counts[idx_best]),
+            iter=int(tries + 1),
         )
 
-        if cand["misfit"] < best["misfit"]:
+        # Mise à jour du meilleur global
+        if cand["rmse_rel"] < best["rmse_rel"]:
             best.update(cand)
+
+        # Ajout à l'historique
+        history.append({
+            "iter": cand["iter"],
+            "lat":  cand["lat"],
+            "lon":  cand["lon"],
+            "rmse_rel": cand["rmse_rel"],
+            # pas de rmse_abs à ce stade (dépend de t0*), on peut laisser NaN
+            "rmse_abs": np.nan,
+            "valid":    cand["valid"],
+        })
 
         if verbose:
             print(
                 f"[Iter {tries+1}] best=({cand['lat']:.2f}, {cand['lon']:.2f})  "
-                f"RMSE_rel={cand['misfit']:.2f}s  stations={cand['valid']}/{Ns}"
+                f"RMSE_rel={cand['rmse_rel']:.2f}s  stations={cand['valid']}/{Ns}"
             )
 
         # 5. Raffinement autour du meilleur point global courant
@@ -198,6 +179,7 @@ def absolute_inversion(
         lam_max = best["lon"] + dlon
         tries += 1
 
+    # Position finale de la source
     best_lat = best["lat"]
     best_lon = best["lon"]
 
@@ -232,23 +214,30 @@ def absolute_inversion(
     residuals_abs[~mask_abs] = np.nan
     rmse_abs = float(np.sqrt(np.nanmean(residuals_abs**2))) if np.any(mask_abs) else np.nan
 
-    # Résidus relatifs finaux (à titre de diag) au point optimal
+    # Résidus relatifs finaux au point optimal
     dt_model_best = T_best - T_best[ref_index]
     residuals_rel = dt_obs - dt_model_best
     mask_rel = np.isfinite(dt_model_best) & np.isfinite(dt_obs)
     residuals_rel[~mask_rel] = np.nan
-    rmse_rel_final = float(np.sqrt(np.nanmean(residuals_rel[mask_rel]**2))) if np.any(mask_rel) else np.nan
+    rmse_rel_final = float(
+        np.sqrt(np.nanmean(residuals_rel[mask_rel]**2))
+    ) if np.any(mask_rel) else np.nan
 
-    stats = {
-        "rmse_rel": rmse_rel_final,
-        "rmse_abs": rmse_abs,
-        "residuals_rel": residuals_rel,
-        "residuals_abs": residuals_abs,
-        "T_model": T_best,
-        "dt_obs": dt_obs,
-        "dt_model": dt_model_best,
-        "ref_index": int(ref_index),
-        "valid": int(np.sum(mask_abs)),
-    }
+    # On met à jour la dernière entrée de history avec le RMSE absolu final
+    if history:
+        history[-1]["rmse_abs"] = rmse_abs
+
+    stats = dict(
+        rmse_rel= rmse_rel_final,
+        rmse_abs= rmse_abs,
+        residuals_rel= residuals_rel,
+        residuals_abs= residuals_abs,
+        T_model= T_best,
+        dt_obs= dt_obs,
+        dt_model= dt_model_best,
+        ref_index= int(ref_index),
+        valid= int(np.sum(mask_abs)),
+        history= history,
+    )
 
     return best_lat, best_lon, t0_hat, stats

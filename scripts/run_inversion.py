@@ -27,6 +27,7 @@ from plotting.uncertainty import (
     plot_misfit_profiles
 )
 from plotting.table_arrival_times import build_residual_table, print_latex_table
+from plotting.misfit_history import plot_misfit_history
 
 
 # --------------------------------------------------------------
@@ -209,6 +210,7 @@ def run_pipeline(
     if "valid" in stats:
         print(f"Valid stations        : {stats['valid']} / {Ns}")
 
+    """
     # --- 4bis) Estimation de l'incertitude spatiale ---
     print("→ Estimating spatial uncertainty around source...")
     unc = estimate_spatial_uncertainty(
@@ -233,6 +235,19 @@ def run_pipeline(
     print(f"Lon uncertainty   : Δλ ≈ {dlon_deg:.2f}°")
     print(f"Spatial radius    : ≈ {radius_km:.0f} km (effective)")
     print(f"Local RMSE min ≈ {unc['rmse_min']:.1f} s")
+    """
+
+    # --- 4ter) Courbe d'évolution du misfit par itération ---
+    if "history" in stats and stats["history"]:
+        print("→ Plotting misfit history...")
+        plot_misfit_history(
+            stats["history"],
+            metric="rmse_rel",
+            title="Relative RMS misfit vs iteration",
+            savepath="outputs/wo_bowen/misfit_history.png",
+            show=True,
+        )
+
 
     print("→ Computing 1D misfit profiles (lat/lon)...")
     profiles = compute_misfit_profiles(
@@ -280,7 +295,8 @@ def run_pipeline(
             "lat": best_lat,
             "lon": best_lon,
             "label": "Estimated source",
-            "radius_km": radius_km if np.isfinite(radius_km) else 20.0,
+            #"radius_km": radius_km if np.isfinite(radius_km) else 20.0,
+            "radius_km": 20.0
         }
 
         plot_world_map(

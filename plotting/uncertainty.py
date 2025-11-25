@@ -372,11 +372,13 @@ def plot_misfit_profiles(
     ax_lat.plot(lat_axis, rmse_lat, "-o", ms=3, label="RMSE(φ)")
     ax_lat.axvline(best_lat, color="k", linestyle="--", lw=1.5, label="Best φ*")
     ax_lat.axhline(rmse_min, color="tab:green", lw=1.5, label="RMSE min")
-    ax_lat.axhline(threshold, color="tab:red", lw=1.2, linestyle=":", label="Seuil (1+δ)·RMSE min")
+    #ax_lat.axhline(threshold, color="tab:red", lw=1.2, linestyle=":", label="Seuil (1+δ)·RMSE min")
 
+    """
     # Lignes verticales pour les Δφ
     ax_lat.axvline(best_lat - dlat_deg, color="tab:red", linestyle="--", lw=1)
     ax_lat.axvline(best_lat + dlat_deg, color="tab:red", linestyle="--", lw=1)
+    """
 
     ax_lat.set_xlabel("Latitude (°N)")
     ax_lat.set_ylabel("RMS misfit (s)")
@@ -387,11 +389,13 @@ def plot_misfit_profiles(
     ax_lon.plot(lon_axis, rmse_lon, "-o", ms=3, label="RMSE(λ)")
     ax_lon.axvline(best_lon, color="k", linestyle="--", lw=1.5, label="Best λ*")
     ax_lon.axhline(rmse_min, color="tab:green", lw=1.5, label="RMSE min")
-    ax_lon.axhline(threshold, color="tab:red", lw=1.2, linestyle=":", label="Seuil (1+δ)·RMSE min")
+    #ax_lon.axhline(threshold, color="tab:red", lw=1.2, linestyle=":", label="Seuil (1+δ)·RMSE min")
 
+    """
     # Lignes verticales pour les Δλ
     ax_lon.axvline(best_lon - dlon_deg, color="tab:red", linestyle="--", lw=1)
     ax_lon.axvline(best_lon + dlon_deg, color="tab:red", linestyle="--", lw=1)
+    """
 
     ax_lon.set_xlabel("Longitude (°E)")
     ax_lon.set_title("Profil longitudinal (φ = {:.2f}°N)".format(best_lat))
