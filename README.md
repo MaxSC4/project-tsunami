@@ -4,7 +4,7 @@
 **Course:** *Data Analysis in Geosciences*
 **Supervision:** *E. Gayer, C. Narteau, F. Beauducel*
 
-**Authors:** [**Maxime Soares Correia**](https://maxsc4.github.io/) & **Matthieu Courcelles**
+**Authors:** [**Maxime Soares Correia**](https://maxsc4.github.io/) & [**Matthieu Courcelles**](https://courcellesmatthieu.github.io)
 
 ---
 
