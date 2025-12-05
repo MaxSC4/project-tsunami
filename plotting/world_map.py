@@ -428,7 +428,7 @@ def plot_world_map(
     fig.tight_layout()
     if savepath:
         os.makedirs(os.path.dirname(savepath), exist_ok=True)
-        fig.savefig(savepath, bbox_inches="tight", dpi=150)
+        fig.savefig(savepath, bbox_inches="tight", dpi=300)
     if show:
         plt.show()
 

@@ -298,12 +298,15 @@ def run_pipeline(
             "radius_km": 20.0
         }
 
+        figsize_A4_landscape = (11.69, 8.27)
+
         plot_world_map(
             etopo_path=etopo_path,
             stations=station_list,   # liste de dicts "name/lat/lon"
             source=source,
             lon_mode=lon_mode,
             title="ETOPO — Stations & great-circle paths",
+            figsize= figsize_A4_landscape,
             savepath=save_map_path,
             show=True,
             station_travel_times_s=T_model
@@ -386,7 +389,7 @@ if __name__ == "__main__":
         max_iter=10,
         robust=True,
         make_map=True,
-        save_map_path="outputs/final/world_map_inversion.png",
+        save_map_path="outputs/report/world_map_inversion_A4.pdf",
         make_diagnostics=True,
         diag_path="outputs/final/obs_vs_model.png",
         use_absolute=True,
