@@ -109,9 +109,9 @@ def run_pipeline(
     max_iter=6,                     # itérations max de raffinement
     robust=True,                    # inversion robuste (médiane, clipping outliers)
     make_map=True,                  # tracer la carte finale
-    save_map_path="outputs/wo_bowen/world_map_inversion.png",
+    save_map_path="outputs/final/world_map_inversion.png",
     make_diagnostics=False,
-    diag_path="outputs/wo_bowen/obs_vs_model.png",
+    diag_path="outputs/final/obs_vs_model.png",
     use_absolute=True,              # True = absolute_inversion, False = triangulation_inversion
 ):
     """
@@ -332,7 +332,7 @@ def run_pipeline(
 
     # --- 7) Tableau LaTeX des temps obs/mod + résidus ---
     df["t_obs_s"] = t_obs_s
-    table = build_residual_table(df, T_model, output_csv="outputs/wo_bowen/residuals_table.csv")
+    table = build_residual_table(df, T_model, output_csv="outputs/final/residuals_table.csv")
     print_latex_table(table)
     """
     # --- 8) Shadow zones : diagramme distance–azimut–résidu ---
