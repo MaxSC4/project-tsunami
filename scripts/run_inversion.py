@@ -29,7 +29,6 @@ from plotting.uncertainty import (
 from plotting.table_arrival_times import build_residual_table, print_latex_table
 from plotting.misfit_history import plot_misfit_history
 
-
 # --------------------------------------------------------------
 # 1) Petites fonctions utilitaires
 # --------------------------------------------------------------
@@ -244,7 +243,7 @@ def run_pipeline(
             stats["history"],
             metric="rmse_rel",
             title="Relative RMS misfit vs iteration",
-            savepath="outputs/wo_bowen/misfit_history.png",
+            savepath="outputs/final/misfit_history.png",
             show=True,
         )
 
@@ -268,7 +267,7 @@ def run_pipeline(
         best_lat, best_lon,
         profiles,
         title="1D RMS misfit profiles around estimated source",
-        savepath="outputs/wo_bowen/misfit_profiles.png",
+        savepath="outputs/final/misfit_profiles.png",
         show=True,
     )
 
@@ -332,6 +331,34 @@ def run_pipeline(
     df["t_obs_s"] = t_obs_s
     table = build_residual_table(df, T_model, output_csv="outputs/wo_bowen/residuals_table.csv")
     print_latex_table(table)
+    """
+    # --- 8) Shadow zones : diagramme distance–azimut–résidu ---
+    try:
+        station_names = list(names_raw.str.replace("_", " "))
+    except Exception:
+        station_names = [s["name"] for s in station_list]
+
+    print("→ Computing shadow-zone diagnostics (azimuth–distance–residual)...")
+    shadow_diag = compute_shadow_diagnostics(
+        src_lat=best_lat,
+        src_lon=best_lon,
+        stations=stations,
+        t_obs_s=t_obs_s,
+        depth_fn=depth_fn,
+        t0_hat=t0_hat,
+        station_names=station_names,
+        n_samples=2000,
+        h_min=0.0,
+    )
+
+    print("→ Plotting shadow-zone polar diagram...")
+    plot_shadow_polar(
+        shadow_diag,
+        title="Azimuth–distance residuals (model shadow zones)",
+        savepath="outputs/wo_bowen/shadow_polar.png",
+        show=True,
+    )
+    """
 
     # Résultats pour réutilisation
     return {
@@ -344,9 +371,10 @@ def run_pipeline(
 
 
 # --------------------------------------------------------------
-# 3) Exécutable direct
+# 3) Exécutable
 # --------------------------------------------------------------
 
+# Version finale avec grid_n = 15, n_samples = 2000, n_pts = 400
 if __name__ == "__main__":
     results = run_pipeline(
         etopo_path="data/etopo5.grd",
@@ -355,12 +383,12 @@ if __name__ == "__main__":
         search_box=(-60.0, 60.0, 100.0, 290.0),
         grid_n=15,
         precision_deg=0.2,
-        max_iter=6,
+        max_iter=10,
         robust=True,
         make_map=True,
-        save_map_path="outputs/new_plot/world_map_inversion.png",
+        save_map_path="outputs/final/world_map_inversion.png",
         make_diagnostics=True,
-        diag_path="outputs/new_plot/obs_vs_model.png",
+        diag_path="outputs/final/obs_vs_model.png",
         use_absolute=True,
     )
 
