@@ -227,7 +227,7 @@ project-tsunami/
 ## 👥 Authors
 
 - [**Maxime Soares Correia**](https://maxsc4.github.io/)
-- **Matthieu Courcelles**
+- [**Matthieu Courcelles**](https://courcellesmatthieu.github.io)
 
 Supervised by **Eric Gayer**, **Clément Narteau**, and **François Beauducel**
 as part of the *Data Analysis in Geosciences* course — M1 Geology, IPGP (2025).
